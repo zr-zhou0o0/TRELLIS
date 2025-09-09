@@ -398,7 +398,7 @@ FodyWeavers.xsd
 *.sln.iml
 
 datasets
-
+*/__pycache__/*
 
 
 

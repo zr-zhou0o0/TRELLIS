@@ -1,3 +1,18 @@
+'''
+Render version 1.0
+Data folder structure：
+renders/
+    |-{sha256}/
+        |-000.png
+        |-000_depth.png
+        |-000_mask.png
+        |-...
+    |-{sha256}/
+        |-000.png
+        |-000_depth.png
+        |-...
+'''
+
 import argparse, sys, os, math, re, glob
 from typing import *
 import bpy
@@ -62,10 +77,10 @@ def init_nodes(save_depth=False, save_normal=False, save_albedo=False, save_mist
     spec_nodes = {}
     
     bpy.context.scene.use_nodes = True
-    bpy.context.scene.view_layers['View Layer'].use_pass_z = save_depth
-    bpy.context.scene.view_layers['View Layer'].use_pass_normal = save_normal
-    bpy.context.scene.view_layers['View Layer'].use_pass_diffuse_color = save_albedo
-    bpy.context.scene.view_layers['View Layer'].use_pass_mist = save_mist
+    bpy.context.scene.view_layers['ViewLayer'].use_pass_z = save_depth
+    bpy.context.scene.view_layers['ViewLayer'].use_pass_normal = save_normal
+    bpy.context.scene.view_layers['ViewLayer'].use_pass_diffuse_color = save_albedo
+    bpy.context.scene.view_layers['ViewLayer'].use_pass_mist = save_mist
     
     nodes = bpy.context.scene.node_tree.nodes
     links = bpy.context.scene.node_tree.links
@@ -466,6 +481,12 @@ def main(arg):
         if arg.save_depth:
             spec_nodes['depth_map'].inputs[1].default_value = view['radius'] - 0.5 * np.sqrt(3)
             spec_nodes['depth_map'].inputs[2].default_value = view['radius'] + 0.5 * np.sqrt(3)
+
+        # ADD Save masks of target object in white 
+        if arg.save_mask:
+            total_objects = [obj for obj in bpy.context.scene.objects]
+
+
         
         bpy.context.scene.render.filepath = os.path.join(arg.output_folder, f'{i:03d}.png')
         for name, output in outputs.items():
@@ -491,6 +512,9 @@ def main(arg):
                 'max': view['radius'] + 0.5 * np.sqrt(3)
             }
         to_export["frames"].append(metadata)
+
+        if arg.save_mask:
+
     
     # Save the camera parameters
     with open(os.path.join(arg.output_folder, 'transforms.json'), 'w') as f:
@@ -521,6 +545,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_mist', action='store_true', help='Save the mist distance maps.')
     parser.add_argument('--split_normal', action='store_true', help='Split the normals of the mesh.')
     parser.add_argument('--save_mesh', action='store_true', help='Save the mesh as a .ply file.')
+    parser.add_argument('--save_mask', action='store_true', help='Save the segmentation mask of target object. For partial point cloud generation.')
     argv = sys.argv[sys.argv.index("--") + 1:]
     args = parser.parse_args(argv)
 

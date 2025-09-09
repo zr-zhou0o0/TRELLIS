@@ -47,11 +47,18 @@ def _render(file_path, sha256, output_dir, num_views):
         '--resolution', '512',
         '--output_folder', output_folder,
         '--engine', 'CYCLES',
+        '--save_depth',
         '--save_mesh',
+        '--save_mask',  # 添加target object mask渲染
     ]
     if file_path.endswith('.blend'):
         args.insert(1, file_path)
+
+    # Uncomment the following line to see the command being run
+    # print("Running command: " + ' '.join(args), flush=True)
     
+    # Uncomment the following line to view output
+    # call(args)
     call(args, stdout=DEVNULL, stderr=DEVNULL)
     
     if os.path.exists(os.path.join(output_folder, 'transforms.json')):
@@ -59,7 +66,7 @@ def _render(file_path, sha256, output_dir, num_views):
 
 
 if __name__ == '__main__':
-    dataset_utils = importlib.import_module(f'datasets.{sys.argv[1]}')
+    dataset_utils = importlib.import_module(f'datasets.{sys.argv[1]}') # 动态导入不同模块，例如 datasets.ABO
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--output_dir', type=str, required=True,
