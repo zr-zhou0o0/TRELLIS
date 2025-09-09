@@ -154,9 +154,77 @@ def init_nodes(save_depth=False, save_normal=False, save_albedo=False, save_mist
         outputs['mist'] = mist_file_output
     
     if save_mask:
-        pass
+        mask_objects = []
+        max_passidx = 0
+
+        all_mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
         
-    return outputs, spec_nodes, render_layers
+        # Filter out objects in 'random_geometry' collection if it exists
+        excluded_objects = set()
+        if 'random_geometry' in bpy.data.collections:
+            random_geometry_collection = bpy.data.collections['random_geometry']
+            # Get all objects in the collection, including nested ones
+            def get_collection_objects(collection):
+                objects = set(collection.objects)
+                for child_collection in collection.children:
+                    objects.update(get_collection_objects(child_collection))
+                return objects
+            excluded_objects = get_collection_objects(random_geometry_collection)
+        
+        mask_objects = [obj for obj in all_mesh_objects if obj not in excluded_objects and not obj.hide_render]
+        
+        for i, obj in enumerate(mask_objects):
+            obj.pass_index = i + 1
+            max_passidx = max(max_passidx, i + 1)
+        
+        print(f"[INFO] Using {len(mask_objects)} objects for mask rendering")
+        
+        if mask_objects:
+            # Create mask output file node
+            mask_file_output = nodes.new('CompositorNodeOutputFile')
+            mask_file_output.base_path = ''
+            mask_file_output.file_slots[0].use_node_format = True
+            mask_file_output.format.file_format = 'PNG'
+            mask_file_output.format.color_mode = 'BW'
+            mask_file_output.format.color_depth = '8'
+            
+            # Ensure we have enough file slots
+            while len(mask_file_output.file_slots) < max_passidx + 1:
+                mask_file_output.file_slots.new("")
+            
+            # Create ID mask nodes and combine them
+            if len(mask_objects) == 1:
+                # Single object case
+                id_mask_node = nodes.new(type='CompositorNodeIDMask')
+                id_mask_node.index = mask_objects[0].pass_index
+                links.new(render_layers.outputs['IndexOB'], id_mask_node.inputs['ID value'])
+                links.new(id_mask_node.outputs['Alpha'], mask_file_output.inputs[0])
+            else:
+                # Multiple objects case - create combined mask
+                id_mask_nodes = []
+                for obj in mask_objects:
+                    id_mask_node = nodes.new(type='CompositorNodeIDMask')
+                    id_mask_node.index = obj.pass_index
+                    links.new(render_layers.outputs['IndexOB'], id_mask_node.inputs['ID value'])
+                    id_mask_nodes.append(id_mask_node)
+                
+                # Chain Math nodes to combine all masks using MAXIMUM operation
+                current_output = id_mask_nodes[0].outputs['Alpha']
+                for i in range(1, len(id_mask_nodes)):
+                    math_node = nodes.new(type='CompositorNodeMath')
+                    math_node.operation = 'MAXIMUM'
+                    links.new(current_output, math_node.inputs[0])
+                    links.new(id_mask_nodes[i].outputs['Alpha'], math_node.inputs[1])
+                    current_output = math_node.outputs['Value']
+                
+                # Connect final combined mask to output
+                links.new(current_output, mask_file_output.inputs[0])
+            
+            outputs['mask'] = mask_file_output
+            spec_nodes['mask_objects'] = mask_objects
+            spec_nodes['max_passidx'] = max_passidx
+        
+    return outputs, spec_nodes
 
 def init_scene() -> None:
     """Resets the scene to a clean state.
@@ -395,8 +463,6 @@ def normalize_scene() -> Tuple[float, Vector]:
         Tuple[float, Vector]: The scale factor and the offset applied to the scene.
     """
     scene_root_objects = [obj for obj in bpy.context.scene.objects.values() if not obj.parent]
-    print(f"[DEBUG] Scene root objects: {[obj.name for obj in scene_root_objects]}")
-
     if len(scene_root_objects) > 1:
         # create an empty object to be used as a parent for all root objects
         scene = bpy.data.objects.new("ParentEmpty", None)
@@ -439,7 +505,7 @@ def main(arg):
     
     # Initialize context
     init_render(engine=arg.engine, resolution=arg.resolution, geo_mode=arg.geo_mode)
-    outputs, spec_nodes, render_layers = init_nodes(
+    outputs, spec_nodes = init_nodes(
         save_depth=arg.save_depth,
         save_normal=arg.save_normal,
         save_albedo=arg.save_albedo,
@@ -477,89 +543,6 @@ def main(arg):
         "frames": []
     }
     views = json.loads(arg.views)
-
-    # Create mask node and outputs
-    # Number of nodes and links are determined by the number of objects in the scene
-    # So we cannot create nodes in the `init_nodes` function
-    if arg.save_mask:
-        nodes = bpy.context.scene.node_tree.nodes
-        links = bpy.context.scene.node_tree.links   
-
-        mask_objects = []
-        max_passidx = 0
-
-        scene_root_objects = [obj for obj in bpy.context.scene.objects.values() if not obj.parent]
-        all_mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
-
-        print(f"[DEBUG] Scene root objects: {[obj.name for obj in scene_root_objects]}")
-        print(f"[DEBUG] All mesh objects: {[obj.name for obj in all_mesh_objects]}")
-
-        # Filter out objects in 'random_geometry' collection if it exists
-        excluded_objects = set()
-        if 'random_geometry' in bpy.data.collections:
-            random_geometry_collection = bpy.data.collections['random_geometry']
-            # Get all objects in the collection, including nested ones
-            def get_collection_objects(collection):
-                objects = set(collection.objects)
-                for child_collection in collection.children:
-                    objects.update(get_collection_objects(child_collection))
-                return objects
-            excluded_objects = get_collection_objects(random_geometry_collection)
-        
-        mask_objects = [obj for obj in all_mesh_objects if obj not in excluded_objects and not obj.hide_render]
-        
-        for i, obj in enumerate(mask_objects):
-            obj.pass_index = i + 1
-            max_passidx = max(max_passidx, i + 1)
-        
-        print(f"[INFO] Using {len(mask_objects)} objects for mask rendering")
-        
-        if mask_objects:
-            # Create mask output file node
-            mask_file_output = nodes.new('CompositorNodeOutputFile')
-            mask_file_output.base_path = ''
-            mask_file_output.file_slots[0].use_node_format = True
-            mask_file_output.format.file_format = 'PNG'
-            mask_file_output.format.color_mode = 'BW'
-            mask_file_output.format.color_depth = '8'
-            
-            # Ensure we have enough file slots
-            while len(mask_file_output.file_slots) < max_passidx + 1:
-                mask_file_output.file_slots.new("")
-            
-            # Create ID mask nodes and combine them
-            if len(mask_objects) == 1:
-                # Single object case
-                id_mask_node = nodes.new(type='CompositorNodeIDMask')
-                id_mask_node.index = mask_objects[0].pass_index
-                links.new(render_layers.outputs['IndexOB'], id_mask_node.inputs['ID value'])
-                links.new(id_mask_node.outputs['Alpha'], mask_file_output.inputs[0])
-            else:
-                # Multiple objects case - create combined mask
-                id_mask_nodes = []
-                for obj in mask_objects:
-                    id_mask_node = nodes.new(type='CompositorNodeIDMask')
-                    id_mask_node.index = obj.pass_index
-                    links.new(render_layers.outputs['IndexOB'], id_mask_node.inputs['ID value'])
-                    id_mask_nodes.append(id_mask_node)
-                
-                # Chain Math nodes to combine all masks using MAXIMUM operation
-                current_output = id_mask_nodes[0].outputs['Alpha']
-                for i in range(1, len(id_mask_nodes)):
-                    math_node = nodes.new(type='CompositorNodeMath')
-                    math_node.operation = 'MAXIMUM'
-                    links.new(current_output, math_node.inputs[0])
-                    links.new(id_mask_nodes[i].outputs['Alpha'], math_node.inputs[1])
-                    current_output = math_node.outputs['Value']
-                
-                # Connect final combined mask to output
-                links.new(current_output, mask_file_output.inputs[0])
-            
-            outputs['mask'] = mask_file_output
-            spec_nodes['mask_objects'] = mask_objects
-            spec_nodes['max_passidx'] = max_passidx
-
-
     for i, view in enumerate(views):
         cam.location = (
             view['radius'] * np.cos(view['yaw']) * np.cos(view['pitch']),
@@ -571,6 +554,10 @@ def main(arg):
         if arg.save_depth:
             spec_nodes['depth_map'].inputs[1].default_value = view['radius'] - 0.5 * np.sqrt(3)
             spec_nodes['depth_map'].inputs[2].default_value = view['radius'] + 0.5 * np.sqrt(3)
+
+        # ADD Save masks of target object in white 
+        if arg.save_mask:
+            pass
         
         bpy.context.scene.render.filepath = os.path.join(arg.output_folder, f'{i:03d}.png')
         for name, output in outputs.items():

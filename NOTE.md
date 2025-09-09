@@ -66,7 +66,7 @@ python dataset_toolkits/build_metadata.py ObjaverseXL --source sketchfab --outpu
 
 <!-- 渲染深度图 -->
 <!-- dataset_toolkits/blender_script/render.py 中的 'init_nodes' 需要删除 'View Layer' 中间的空格 才能成功运行 -->
-python dataset_toolkits/render.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab 
+python dataset_toolkits/render.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --save_depth --save_mask
 
 
 

@@ -24,7 +24,7 @@ def _install_blender():
         os.system(f'tar -xvf {BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64.tar.xz -C {BLENDER_INSTALLATION_PATH}')
 
 
-def _render(file_path, sha256, output_dir, num_views):
+def _render(file_path, sha256, output_dir, num_views, save_depth=False, save_mask=False):
     output_folder = os.path.join(output_dir, 'renders', sha256)
     
     # Build camera {yaw, pitch, radius, fov}
@@ -47,10 +47,15 @@ def _render(file_path, sha256, output_dir, num_views):
         '--resolution', '512',
         '--output_folder', output_folder,
         '--engine', 'CYCLES',
-        '--save_depth',
         '--save_mesh',
-        '--save_mask',  # 添加target object mask渲染
     ]
+    
+    if save_depth:
+        args.append('--save_depth')
+    
+    if save_mask:
+        args.append('--save_mask')
+        
     if file_path.endswith('.blend'):
         args.insert(1, file_path)
 
@@ -81,6 +86,11 @@ if __name__ == '__main__':
     parser.add_argument('--rank', type=int, default=0)
     parser.add_argument('--world_size', type=int, default=1)
     parser.add_argument('--max_workers', type=int, default=8)
+    parser.add_argument('--save_depth', action='store_true',
+                        help='Save depth maps during rendering')
+    parser.add_argument('--save_mask', action='store_true',
+                        help='Save object masks during rendering')
+    
     opt = parser.parse_args(sys.argv[2:])
     opt = edict(vars(opt))
 
@@ -122,7 +132,11 @@ if __name__ == '__main__':
     print(f'Processing {len(metadata)} objects...')
 
     # process objects
-    func = partial(_render, output_dir=opt.output_dir, num_views=opt.num_views)
+    func = partial(_render, 
+                   output_dir=opt.output_dir, 
+                   num_views=opt.num_views,
+                   save_depth=opt.save_depth, 
+                   save_mask=opt.save_mask)
     rendered = dataset_utils.foreach_instance(metadata, opt.output_dir, func, max_workers=opt.max_workers, desc='Rendering objects')
     rendered = pd.concat([rendered, pd.DataFrame.from_records(records)])
     rendered.to_csv(os.path.join(opt.output_dir, f'rendered_{opt.rank}.csv'), index=False)
