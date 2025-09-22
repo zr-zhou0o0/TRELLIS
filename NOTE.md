@@ -84,17 +84,25 @@ python dataset_toolkits/render_geo.py ObjaverseXL \
 
 
 <!-- 通过 depth 和 mask 生成 partial pointcloud -->
+<!-- 实质上是把添加 geo primitive 后的 normalized scene 转换成 partial pointcloud，而非 raw model （未经normalize的） -->
 python dataset_toolkits/create_partial_pointcloud.py ObjaverseXL \
     --output_dir datasets/ObjaverseXL_sketchfab
+
+
+# TODO
+<!-- 导入glb会自动旋转90度，也就是说，物体的方向没有对上 -->
+<!-- 不同视角的点云也没有对上 -->
+
 
 
 <!-- 确保 meta data 可以记录是否添加 geometry primitive -->
 # TODO 在metadata里添加统计 geometry primitive / render geo / create pc 的列
 
-# ERROR
-我的pool处理为什么不见了？
-为什么又不能并行化了？
-记得即使push到GitHub上
+
+<!-- 记得及时push到GitHub上 -->
+
+
+
 
 
 
@@ -165,14 +173,18 @@ X向右，Y向下，Z向前（观察方向）
 
 
 **2. 从 pixel coord 到 cam 到 world；从depth得到z；从normalized到原位置**
+- 记在纸上了
+
+- *注意*
+- 第一次normalize是raw到render/add_geometry并存储glb，先normalize再add，所以add之后其实还有可能又不normalized了
+- 第二次normalize是加了 geometry primitive 后 render_geo 这里还有一次normalize，但是没有保存 3d asset，所以需要反变换回去。
 
 
 
 
 
-# **README**
 
-### Add Geometric Primitives
+# **Add Geometric Primitives**
 
 ```
 python dataset_toolkits/add_geometry.py <SUBSET> --output_dir <OUTPUT_DIR> [--num_primitives <NUM_PRIMITIVES>] [--primitive_types <TYPES>] [--rank <RANK> --world_size <WORLD_SIZE>]

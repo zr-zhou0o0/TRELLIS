@@ -15,26 +15,26 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def camera_to_world_batched(points_cam, pose):
-    """
-    Convert points from camera coordinates to world coordinates
-    points_cam: [B, N, M, 3] (in use, N is ray number, M is points on a ray)
-    pose: [B, 4, 4] camera pose matrix
-    """
-    B, N, M, _ = points_cam.shape
-    ones = torch.ones((B, N, M), device=points_cam.device)  # homogeneous
-    x_cam = points_cam[:, :, :, 0]
-    y_cam = points_cam[:, :, :, 1]
-    z_cam = points_cam[:, :, :, 2]
-    points_cam_homo = torch.stack((x_cam, y_cam, z_cam, ones), dim=-1)  # [B, N, M, 4]
+# def camera_to_world_batched(points_cam, pose):
+#     """
+#     Convert points from camera coordinates to world coordinates
+#     points_cam: [B, N, M, 3] (in use, N is ray number, M is points on a ray)
+#     pose: [B, 4, 4] camera pose matrix
+#     """
+#     B, N, M, _ = points_cam.shape
+#     ones = torch.ones((B, N, M), device=points_cam.device)  # homogeneous
+#     x_cam = points_cam[:, :, :, 0]
+#     y_cam = points_cam[:, :, :, 1]
+#     z_cam = points_cam[:, :, :, 2]
+#     points_cam_homo = torch.stack((x_cam, y_cam, z_cam, ones), dim=-1)  # [B, N, M, 4]
     
-    points_cam_homo = points_cam_homo.reshape(B, -1, 4)  # [B, N*M, 4]
-    points_cam_homo = points_cam_homo.permute(0, 2, 1)  # [B, 4, N*M]
+#     points_cam_homo = points_cam_homo.reshape(B, -1, 4)  # [B, N*M, 4]
+#     points_cam_homo = points_cam_homo.permute(0, 2, 1)  # [B, 4, N*M]
 
-    points_world = torch.bmm(pose, points_cam_homo).permute(0, 2, 1)[:, :, :3]  # [B, N*M, 3]
-    # torch.bmm(pose, points_cam_homo): 批量矩阵乘法
+#     points_world = torch.bmm(pose, points_cam_homo).permute(0, 2, 1)[:, :, :3]  # [B, N*M, 3]
+#     # torch.bmm(pose, points_cam_homo): 批量矩阵乘法
 
-    return points_world.reshape(B, N, M, 3)
+#     return points_world.reshape(B, N, M, 3)
 
 
 def depth_to_pointcloud(depth_map, camera_intrinsics, camera_pose, near, far, mask=None):
@@ -85,7 +85,8 @@ def depth_to_pointcloud(depth_map, camera_intrinsics, camera_pose, near, far, ma
     # Ray directions, pixel to camera coordinates
     pixel_coords = torch.stack([valid_x, valid_y, torch.ones_like(valid_x)], dim=0).float()  # (3, N), (x, y, 1)
     ray_dirs = torch.inverse(camera_intrinsics) @ pixel_coords  # (3, N)
-    ray_dirs = ray_dirs / torch.norm(ray_dirs, dim=0, keepdim=True)  # 单位化方向向量 (?)
+    # 单位化方向向量 (?)，但是会导致mesh无法对齐，删除后mesh对齐正常。说明blender渲染深度的distance也是z轴距离，而不是沿射线的距离。
+    # ray_dirs = ray_dirs / torch.norm(ray_dirs, dim=0, keepdim=True)  
 
     # Camera coordinates to world coordinates
     R = camera_pose[:3, :3]  # (3, 3)
@@ -116,6 +117,9 @@ def load_camera_params(transforms_path, type='blender'):
     """
     with open(transforms_path, 'r') as f:
         data = json.load(f)
+
+    scale = data['scale']
+    offset = data['offset']
     
     frames = data['frames']
     camera_params = []
@@ -125,7 +129,8 @@ def load_camera_params(transforms_path, type='blender'):
         transform_matrix = np.array(frame['transform_matrix'])
         camera_pose = torch.from_numpy(transform_matrix).float()
         
-        # NOTE transform保存的是c2w 但是是blender格式的
+        # Transform保存的是c2w 但是是blender格式的
+        # 已验证 这个转换矩阵是正确的
         if type=='blender':
             blender_to_cv = torch.tensor([
                 [1,  0,  0,  0],
@@ -162,7 +167,7 @@ def load_camera_params(transforms_path, type='blender'):
             'far': depth_far
         })
     
-    return camera_params
+    return camera_params, scale, offset
 
 
 
@@ -292,7 +297,7 @@ if __name__ == '__main__':
             print(f"Warning: transforms.json not found for {sha256}")
             processed.append({'sha256': sha256, 'pointcloud_processed': False, 'pointcloud_path': None})
             continue
-        camera_params = load_camera_params(transforms_path, type='blender')
+        camera_params, scale, offset = load_camera_params(transforms_path, type='blender')
         all_points = []
         # 线程池只做I/O
         with ThreadPoolExecutor(max_workers=opt.max_workers) as executor:
@@ -320,6 +325,12 @@ if __name__ == '__main__':
             processed.append({'sha256': sha256, 'pointcloud_processed': False, 'pointcloud_path': None})
             continue
         combined_points = torch.cat(all_points, dim=0)
+
+        # 反归一化
+        # 注意这个顺序必须要与归一化的顺序相反
+        combined_points = combined_points - torch.from_numpy(np.array(offset)).float().to(combined_points.device)
+        combined_points = combined_points / scale
+
         points_np = combined_points.cpu().numpy()
         save_pointcloud_ply(points_np, output_file)
         processed.append({'sha256': sha256, 'pointcloud_processed': True, 'pointcloud_path': f'pointcloud/{sha256}.ply'})
