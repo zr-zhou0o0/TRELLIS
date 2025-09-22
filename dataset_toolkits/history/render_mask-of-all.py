@@ -35,14 +35,14 @@ def _render(file_path, sha256, output_dir, num_views, save_depth=False, save_mas
         y, p = sphere_hammersley_sequence(i, num_views, offset)
         yaws.append(y)
         pitchs.append(p)
-    radius = [2] * num_views # 半径全部都设置为2
-    fov = [40 / 180 * np.pi] * num_views # fov全部都设置为40度，再转换为弧度
+    radius = [2] * num_views
+    fov = [40 / 180 * np.pi] * num_views
     views = [{'yaw': y, 'pitch': p, 'radius': r, 'fov': f} for y, p, r, f in zip(yaws, pitchs, radius, fov)]
     
     args = [
         BLENDER_PATH, '-b', '-P', os.path.join(os.path.dirname(__file__), 'blender_script', 'render.py'),
         '--',
-        '--views', json.dumps(views), # json.dumps() 将Python对象序列化为JSON字符串，将Python数据结构传递给Blender脚本
+        '--views', json.dumps(views),
         '--object', os.path.expanduser(file_path),
         '--resolution', '512',
         '--output_folder', output_folder,

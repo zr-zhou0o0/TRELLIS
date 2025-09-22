@@ -24,8 +24,9 @@ def _install_blender():
         os.system(f'tar -xvf {BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64.tar.xz -C {BLENDER_INSTALLATION_PATH}')
 
 
-def _render(file_path, sha256, output_dir, num_views, save_depth=False, save_mask=False):
-    output_folder = os.path.join(output_dir, 'renders', sha256)
+def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save_mask=False):
+    # Output to renders_geo directory instead of renders
+    output_folder = os.path.join(output_dir, 'renders_geo', sha256)
     
     # Build camera {yaw, pitch, radius, fov}
     yaws = []
@@ -35,14 +36,14 @@ def _render(file_path, sha256, output_dir, num_views, save_depth=False, save_mas
         y, p = sphere_hammersley_sequence(i, num_views, offset)
         yaws.append(y)
         pitchs.append(p)
-    radius = [2] * num_views # 半径全部都设置为2
-    fov = [40 / 180 * np.pi] * num_views # fov全部都设置为40度，再转换为弧度
+    radius = [2] * num_views
+    fov = [40 / 180 * np.pi] * num_views
     views = [{'yaw': y, 'pitch': p, 'radius': r, 'fov': f} for y, p, r, f in zip(yaws, pitchs, radius, fov)]
     
     args = [
         BLENDER_PATH, '-b', '-P', os.path.join(os.path.dirname(__file__), 'blender_script', 'render.py'),
         '--',
-        '--views', json.dumps(views), # json.dumps() 将Python对象序列化为JSON字符串，将Python数据结构传递给Blender脚本
+        '--views', json.dumps(views),
         '--object', os.path.expanduser(file_path),
         '--resolution', '512',
         '--output_folder', output_folder,
@@ -67,7 +68,7 @@ def _render(file_path, sha256, output_dir, num_views, save_depth=False, save_mas
     call(args, stdout=DEVNULL, stderr=DEVNULL)
     
     if os.path.exists(os.path.join(output_folder, 'transforms.json')):
-        return {'sha256': sha256, 'rendered': True}
+        return {'sha256': sha256, 'rendered_geo': True}
 
 
 if __name__ == '__main__':
@@ -89,12 +90,12 @@ if __name__ == '__main__':
     parser.add_argument('--save_depth', action='store_true',
                         help='Save depth maps during rendering')
     parser.add_argument('--save_mask', action='store_true',
-                        help='Save object masks during rendering')
+                        help='Save object masks during rendering (excluding random_geometry objects)')
     
     opt = parser.parse_args(sys.argv[2:])
     opt = edict(vars(opt)) # 将命令行参数转换为易于访问的属性字典
 
-    os.makedirs(os.path.join(opt.output_dir, 'renders'), exist_ok=True)
+    os.makedirs(os.path.join(opt.output_dir, 'renders_geo'), exist_ok=True)
     
     # install blender
     print('Checking blender...', flush=True)
@@ -104,12 +105,27 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(opt.output_dir, 'metadata.csv')):
         raise ValueError('metadata.csv not found')
     metadata = pd.read_csv(os.path.join(opt.output_dir, 'metadata.csv'))
+    
     if opt.instances is None:
-        metadata = metadata[metadata['local_path'].notna()]
+        # Filter for objects that have geo_processed set to True
+        if 'geo_processed' in metadata.columns:
+            metadata = metadata[metadata['geo_processed'] == True]
+        else:
+            print("Warning: 'geo_processed' column not found in metadata. Make sure to run add_geometry.py first.")
+            # Fallback: check if geo files exist
+            geo_exists = []
+            for _, row in metadata.iterrows():
+                sha256 = row['sha256']
+                geo_file = os.path.join(opt.output_dir, 'geo', 'glbs', f'{sha256}.glb')
+                geo_exists.append(os.path.exists(geo_file))
+            metadata = metadata[geo_exists]
+        
         if opt.filter_low_aesthetic_score is not None:
             metadata = metadata[metadata['aesthetic_score'] >= opt.filter_low_aesthetic_score]
-        if 'rendered' in metadata.columns:
-            metadata = metadata[metadata['rendered'] == False] # 筛选出'rendered'列值为False的所有行
+        
+        # Filter out objects that are already rendered
+        if 'rendered_geo' in metadata.columns:
+            metadata = metadata[metadata['rendered_geo'] == False] # 筛选出'rendered_geo'列值为False的所有行
     else:
         if os.path.exists(opt.instances):
             with open(opt.instances, 'r') as f:
@@ -125,18 +141,27 @@ if __name__ == '__main__':
 
     # filter out objects that are already processed
     for sha256 in copy.copy(metadata['sha256'].values):
-        if os.path.exists(os.path.join(opt.output_dir, 'renders', sha256, 'transforms.json')):
-            records.append({'sha256': sha256, 'rendered': True})
+        if os.path.exists(os.path.join(opt.output_dir, 'renders_geo', sha256, 'transforms.json')):
+            records.append({'sha256': sha256, 'rendered_geo': True})
             metadata = metadata[metadata['sha256'] != sha256]
                 
-    print(f'Processing {len(metadata)} objects...')
+    print(f'Processing {len(metadata)} geo objects...')
+
+    # Create a function that maps sha256 to geo file path
+    def get_geo_file_path(sha256, output_dir):
+        return os.path.join(output_dir, 'geo', 'glbs', f'{sha256}.glb')
+
+    # Modify metadata to point to geo files instead of raw files
+    metadata_geo = metadata.copy()
+    metadata_geo['local_path'] = metadata_geo['sha256'].apply(lambda x: f'geo/glbs/{x}.glb')
 
     # process objects
-    func = partial(_render, 
+    func = partial(_render_geo, 
                    output_dir=opt.output_dir, 
                    num_views=opt.num_views,
                    save_depth=opt.save_depth, 
                    save_mask=opt.save_mask)
-    rendered = dataset_utils.foreach_instance(metadata, opt.output_dir, func, max_workers=opt.max_workers, desc='Rendering objects')
+    
+    rendered = dataset_utils.foreach_instance(metadata_geo, opt.output_dir, func, max_workers=opt.max_workers, desc='Rendering geo objects')
     rendered = pd.concat([rendered, pd.DataFrame.from_records(records)])
-    rendered.to_csv(os.path.join(opt.output_dir, f'rendered_{opt.rank}.csv'), index=False)
+    rendered.to_csv(os.path.join(opt.output_dir, f'rendered_geo_{opt.rank}.csv'), index=False)

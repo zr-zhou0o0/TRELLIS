@@ -408,22 +408,23 @@ def normalize_scene() -> Tuple[float, Vector]:
     else:
         scene = scene_root_objects[0]
 
-    bbox_min, bbox_max = scene_bbox()
-    scale = 1 / max(bbox_max - bbox_min)
+    bbox_min, bbox_max = scene_bbox() # e.g. [2, 3, 4], [5, 6, 7]
+    scale = 1 / max(bbox_max - bbox_min) # 所有轴上大减小 取最长的一个轴 作为scale
     scene.scale = scene.scale * scale
 
     # Apply scale to matrix_world.
     bpy.context.view_layer.update()
     bbox_min, bbox_max = scene_bbox()
-    offset = -(bbox_min + bbox_max) / 2
+    offset = -(bbox_min + bbox_max) / 2 # 把中心移到原点
     scene.matrix_world.translation += offset
     bpy.ops.object.select_all(action="DESELECT")
     
     return scale, offset
 
 def get_transform_matrix(obj: bpy.types.Object) -> list:
-    pos, rt, _ = obj.matrix_world.decompose()
-    rt = rt.to_matrix()
+    pos, rt, _ = obj.matrix_world.decompose() # 分解对象的全局变换矩阵，得到位置、旋转和缩放分量
+    # 暂时当作是c2w
+    rt = rt.to_matrix() # 将四元数旋转转换为3x3旋转矩阵
     matrix = []
     for ii in range(3):
         a = []
@@ -494,8 +495,10 @@ def main(arg):
         print(f"[DEBUG] Scene root objects: {[obj.name for obj in scene_root_objects]}")
         print(f"[DEBUG] All mesh objects: {[obj.name for obj in all_mesh_objects]}")
 
-        # Filter out objects in 'random_geometry' collection if it exists
+        # Filter out objects that are children of 'random_geometry' empty object
         excluded_objects = set()
+        
+        # Check for random_geometry collection (old method)
         if 'random_geometry' in bpy.data.collections:
             random_geometry_collection = bpy.data.collections['random_geometry']
             # Get all objects in the collection, including nested ones
@@ -504,7 +507,21 @@ def main(arg):
                 for child_collection in collection.children:
                     objects.update(get_collection_objects(child_collection))
                 return objects
-            excluded_objects = get_collection_objects(random_geometry_collection)
+            excluded_objects.update(get_collection_objects(random_geometry_collection))
+        
+        # Check for random_geometry empty object (new method)
+        random_geometry_objects = [obj for obj in bpy.context.scene.objects if obj.name == 'random_geometry']
+        if random_geometry_objects:
+            random_geometry_empty = random_geometry_objects[0]
+            # Get all children (including nested children) of random_geometry empty object
+            def get_children_recursive(obj):
+                children = set()
+                for child in obj.children:
+                    children.add(child)
+                    children.update(get_children_recursive(child))
+                return children
+            excluded_objects.update(get_children_recursive(random_geometry_empty))
+            print(f"[DEBUG] Excluding {len(get_children_recursive(random_geometry_empty))} objects under random_geometry empty object")
         
         mask_objects = [obj for obj in all_mesh_objects if obj not in excluded_objects and not obj.hide_render]
         
@@ -561,14 +578,17 @@ def main(arg):
 
 
     for i, view in enumerate(views):
+        # Set camera parameters
+        # 相机约束设置（朝向原点）在 init_camera() 中已经设置
         cam.location = (
             view['radius'] * np.cos(view['yaw']) * np.cos(view['pitch']),
             view['radius'] * np.sin(view['yaw']) * np.cos(view['pitch']),
             view['radius'] * np.sin(view['pitch'])
         )
-        cam.data.lens = 16 / np.tan(view['fov'] / 2)
+        cam.data.lens = 16 / np.tan(view['fov'] / 2) # 利用 fov 计算焦距
         
-        if arg.save_depth:
+        if arg.save_depth: # 深度范围设置
+            # √3/2 ≈ 0.866: 这是单位立方体的空间对角线的一半，确保覆盖场景中的物体
             spec_nodes['depth_map'].inputs[1].default_value = view['radius'] - 0.5 * np.sqrt(3)
             spec_nodes['depth_map'].inputs[2].default_value = view['radius'] + 0.5 * np.sqrt(3)
         
@@ -583,12 +603,13 @@ def main(arg):
             ext = EXT[output.format.file_format]
             path = glob.glob(f'{output.file_slots[0].path}*.{ext}')[0]
             os.rename(path, f'{output.file_slots[0].path}.{ext}')
-            
+        
+        # HERE
         # Save camera parameters
         metadata = {
             "file_path": f'{i:03d}.png',
             "camera_angle_x": view['fov'],
-            "transform_matrix": get_transform_matrix(cam)
+            "transform_matrix": get_transform_matrix(cam) 
         }
         if arg.save_depth:
             metadata['depth'] = {
