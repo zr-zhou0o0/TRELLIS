@@ -427,7 +427,7 @@ def normalize_scene(additional_scale: float) -> Tuple[float, Vector]:
 
 def get_transform_matrix(obj: bpy.types.Object) -> list:
     pos, rt, _ = obj.matrix_world.decompose() # 分解对象的全局变换矩阵，得到位置、旋转和缩放分量
-    # 暂时当作是c2w
+    # matrix_world indeed is C2W
     rt = rt.to_matrix() # 将四元数旋转转换为3x3旋转矩阵
     matrix = []
     for ii in range(3):

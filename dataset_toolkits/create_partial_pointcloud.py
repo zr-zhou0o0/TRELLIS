@@ -52,7 +52,7 @@ def depth_to_pointcloud(depth_map, camera_intrinsics, camera_pose, near, far, ma
     """
     H, W = depth_map.shape
     device = depth_map.device
-    print("Depth range:", depth_map.min().item(), "to", depth_map.max().item())
+    # print("Depth range:", depth_map.min().item(), "to", depth_map.max().item())
 
     # Create pixel coordinates
     # y: top to down is 0 ~ H-1
@@ -180,7 +180,7 @@ def load_depth_and_mask(renders_dir, i, device):
     depth_img = cv2.imread(depth_path, cv2.IMREAD_ANYDEPTH)
     if depth_img is None:
         return None, None
-    print("Depth range loaded:", depth_img.min(), "to", depth_img.max())
+    # print("Depth range loaded:", depth_img.min(), "to", depth_img.max())
     mask = None
     if os.path.exists(mask_path):
         mask_img = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)

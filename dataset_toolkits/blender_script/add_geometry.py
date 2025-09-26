@@ -134,10 +134,12 @@ def normalize_scene():
     
     return scale, offset
 
-def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, scale_range=(0.2, 1.0), placement_offset=0.2):
+def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, scale_range=(0.1, 0.8), placement_offset=0.2):
     """Create a random geometric primitive as a child of the empty parent."""
+    print(f"[DEBUG] Bbox min: {bbox_min}, bbox max: {bbox_max}")
+
     # Calculate position within the bounding box with some margin
-    margin = 0.1
+    margin = 0.5 # 0.1
     
     # Decide which axis to place the primitive along (x, y, or z)
     axis = random.choice(['x', 'y', 'z'])
@@ -427,7 +429,7 @@ def main(args):
     print('[INFO] Geometric primitives added.')
 
     # Post-process primitives to avoid overlap
-    post_process_primitives_for_overlap(original_bbox_min, original_bbox_max)
+    # post_process_primitives_for_overlap(original_bbox_min, original_bbox_max)
 
     
     # Export the result

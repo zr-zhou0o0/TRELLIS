@@ -71,16 +71,17 @@ python dataset_toolkits/render.py ObjaverseXL --output_dir datasets/ObjaverseXL_
 
 
 <!-- 创建.blend文件，向物体中随机添加 geometry primitive -->
-python dataset_toolkits/add_geometry.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --num_primitives 7,15 --primitive_types cube,cylinder,sphere,cone --use_time_seed
+python dataset_toolkits/add_geometry.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --num_primitives 2,5 --primitive_types cube,cylinder,sphere,cone --use_time_seed
 
 
 <!-- 渲染添加了 geometry primitive 后的depth和mask -->
+# TODO 这个scale应该对准物体而非整个场景的中心
 python dataset_toolkits/render_geo.py ObjaverseXL \
     --output_dir datasets/ObjaverseXL_sketchfab \
     --num_views 150 \
     --save_depth \
     --save_mask \
-    --scale 3.0
+    --scale 1.0
 
 
 
