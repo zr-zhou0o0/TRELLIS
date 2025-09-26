@@ -24,7 +24,7 @@ def _install_blender():
         os.system(f'tar -xvf {BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64.tar.xz -C {BLENDER_INSTALLATION_PATH}')
 
 
-def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save_mask=False):
+def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save_mask=False , scale=1.0):
     # Output to renders_geo directory instead of renders
     output_folder = os.path.join(output_dir, 'renders_geo', sha256)
     
@@ -49,6 +49,7 @@ def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save
         '--output_folder', output_folder,
         '--engine', 'CYCLES',
         '--save_mesh',
+        '--scale', str(scale)
     ]
     
     if save_depth:
@@ -91,6 +92,8 @@ if __name__ == '__main__':
                         help='Save depth maps during rendering')
     parser.add_argument('--save_mask', action='store_true',
                         help='Save object masks during rendering (excluding random_geometry objects)')
+    parser.add_argument('--scale', type=float, default=1.0,
+                        help='Scale factor for the object during rendering')
     
     opt = parser.parse_args(sys.argv[2:])
     opt = edict(vars(opt)) # 将命令行参数转换为易于访问的属性字典
@@ -160,7 +163,8 @@ if __name__ == '__main__':
                    output_dir=opt.output_dir, 
                    num_views=opt.num_views,
                    save_depth=opt.save_depth, 
-                   save_mask=opt.save_mask)
+                   save_mask=opt.save_mask,
+                   scale=opt.scale)
     
     rendered = dataset_utils.foreach_instance(metadata_geo, opt.output_dir, func, max_workers=opt.max_workers, desc='Rendering geo objects')
     rendered = pd.concat([rendered, pd.DataFrame.from_records(records)])

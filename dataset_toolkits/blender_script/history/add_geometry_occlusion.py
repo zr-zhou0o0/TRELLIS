@@ -134,37 +134,14 @@ def normalize_scene():
     
     return scale, offset
 
-def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, scale_range=(0.2, 1.0), placement_offset=0.2):
+
+def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, scale_range=(0.05, 0.2)):
     """Create a random geometric primitive as a child of the empty parent."""
     # Calculate position within the bounding box with some margin
     margin = 0.1
-    
-    # Decide which axis to place the primitive along (x, y, or z)
-    axis = random.choice(['x', 'y', 'z'])
-    # Decide whether to place on the min or max side of the axis
-    side = random.choice([-1, 1])
-
-    if axis == 'x':
-        if side == -1:
-            pos_x = random.uniform(bbox_min.x - placement_offset - margin, bbox_min.x - margin)
-        else:
-            pos_x = random.uniform(bbox_max.x + margin, bbox_max.x + placement_offset + margin)
-        pos_y = random.uniform(bbox_min.y, bbox_max.y)
-        pos_z = random.uniform(bbox_min.z, bbox_max.z)
-    elif axis == 'y':
-        pos_x = random.uniform(bbox_min.x, bbox_max.x)
-        if side == -1:
-            pos_y = random.uniform(bbox_min.y - placement_offset - margin, bbox_min.y - margin)
-        else:
-            pos_y = random.uniform(bbox_max.y + margin, bbox_max.y + placement_offset + margin)
-        pos_z = random.uniform(bbox_min.z, bbox_max.z)
-    else: # axis == 'z'
-        pos_x = random.uniform(bbox_min.x, bbox_max.x)
-        pos_y = random.uniform(bbox_min.y, bbox_max.y)
-        if side == -1:
-            pos_z = random.uniform(bbox_min.z - placement_offset - margin, bbox_min.z - margin)
-        else:
-            pos_z = random.uniform(bbox_max.z + margin, bbox_max.z + placement_offset + margin)
+    pos_x = random.uniform(bbox_min.x - margin, bbox_max.x + margin)
+    pos_y = random.uniform(bbox_min.y - margin, bbox_max.y + margin)
+    pos_z = random.uniform(bbox_min.z - margin, bbox_max.z + margin)
     
     # Random scale
     scale = random.uniform(scale_range[0], scale_range[1])
@@ -194,14 +171,6 @@ def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, sc
             location=(pos_x, pos_y, pos_z),
             rotation=(rot_x, rot_y, rot_z)
         )
-    elif primitive_type == 'cone':
-        bpy.ops.mesh.primitive_cone_add(
-            radius1=1,
-            radius2=0,
-            depth=2,
-            location=(pos_x, pos_y, pos_z),
-            rotation=(rot_x, rot_y, rot_z)
-        )
     else:
         raise ValueError(f"Unsupported primitive type: {primitive_type}")
     
@@ -225,36 +194,6 @@ def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, sc
         
         print(f"Cube scaled to cuboid: X={scale_x_factor:.2f}, Y={scale_y_factor:.2f}, Z={scale_z_factor:.2f}")
     
-    # For cylinder primitives, apply random scaling to radius and height
-    elif primitive_type == 'cylinder':
-        # Random scale factors for radius (X,Y) and height (Z)
-        radius_factor = random.uniform(0.5, 2.0)  # Scale radius
-        height_factor = random.uniform(0.5, 3.0)  # Scale height, can be taller
-        
-        # Apply the scaling: X,Y for radius, Z for height
-        primitive_obj.scale = (
-            scale * radius_factor,
-            scale * radius_factor,  # Keep X and Y the same for circular cross-section
-            scale * height_factor
-        )
-        
-        print(f"Cylinder scaled: radius={radius_factor:.2f}, height={height_factor:.2f}")
-    
-    # For cone primitives, apply random scaling to radius and height
-    elif primitive_type == 'cone':
-        # Random scale factors for radius (X,Y) and height (Z)
-        radius_factor = random.uniform(0.5, 2.0)  # Scale base radius
-        height_factor = random.uniform(0.5, 3.0)  # Scale height, can be taller
-        
-        # Apply the scaling: X,Y for radius, Z for height
-        primitive_obj.scale = (
-            scale * radius_factor,
-            scale * radius_factor,  # Keep X and Y the same for circular base
-            scale * height_factor
-        )
-        
-        print(f"Cone scaled: radius={radius_factor:.2f}, height={height_factor:.2f}")
-    
     primitive_obj.parent = empty_parent
     
     # Create a simple material for the primitive
@@ -276,7 +215,7 @@ def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, sc
     return primitive_obj
 
 
-def add_geometric_primitives(num_primitives, primitive_types, use_time_seed):
+def add_geometric_primitives(num_primitives, primitive_types):
     """Add random geometric primitives to the scene."""
     # Get original scene bounding box
     bbox_min, bbox_max = scene_bbox()
@@ -289,13 +228,6 @@ def add_geometric_primitives(num_primitives, primitive_types, use_time_seed):
     
     # Add random primitives
     for i in range(num_primitives):
-
-        if use_time_seed:
-            current_time = time.time()
-            seed = int((current_time * 1000000) % (2**32))
-            random.seed(seed)
-            print(f"[DEBUG] Random seed for primitive {i+1}: {seed}")
-
         primitive_type = random.choice(primitive_types)
         primitive_obj = create_random_primitive(primitive_type, empty_obj, bbox_min, bbox_max)
         
@@ -303,82 +235,6 @@ def add_geometric_primitives(num_primitives, primitive_types, use_time_seed):
         # No need to move to any collection - they stay in the default scene collection
         
         print(f"Added {primitive_type} primitive {i+1}/{num_primitives}")
-
-
-
-def post_process_primitives_for_overlap(original_bbox_min, original_bbox_max):
-    """
-    Check for overlaps between added primitives and the original object's bounding box.
-    If an overlap is detected, move the primitive away from the original object.
-    """
-    print("[INFO] Starting post-processing to prevent overlaps...")
-    
-    # Find the empty object holding the random primitives
-    random_geometry_parent = bpy.data.objects.get("random_geometry")
-    if not random_geometry_parent:
-        print("[WARNING] 'random_geometry' parent object not found. Skipping overlap check.")
-        return
-
-    primitives = [obj for obj in random_geometry_parent.children if obj.type == 'MESH']
-    
-    for prim in primitives:
-        # Calculate the world-space bounding box of the primitive
-        prim_bbox_min = (math.inf,) * 3
-        prim_bbox_max = (-math.inf,) * 3
-        for corner in prim.bound_box:
-            world_corner = prim.matrix_world @ Vector(corner)
-            prim_bbox_min = tuple(min(x, y) for x, y in zip(prim_bbox_min, world_corner))
-            prim_bbox_max = tuple(max(x, y) for x, y in zip(prim_bbox_max, world_corner))
-        
-        prim_bbox_min = Vector(prim_bbox_min)
-        prim_bbox_max = Vector(prim_bbox_max)
-        prim_center = (prim_bbox_min + prim_bbox_max) / 2
-        
-        original_center = (original_bbox_min + original_bbox_max) / 2
-        
-        # Check for overlap on each axis and apply correction
-        
-         
-        # Z-axis (Up/Down)
-        if prim_center.z > original_center.z: # Primitive is above
-            overlap = original_bbox_max.z - prim_bbox_min.z
-            if overlap > 0:
-                prim.location.z += overlap
-                print(f"Moved primitive '{prim.name}' up by {overlap:.3f} to resolve Z overlap.")
-        else: # Primitive is below
-            overlap = prim_bbox_max.z - original_bbox_min.z
-            if overlap > 0:
-                prim.location.z -= overlap
-                print(f"Moved primitive '{prim.name}' down by {overlap:.3f} to resolve Z overlap.")
-
-        # Y-axis (Front/Back)
-        if prim_center.y > original_center.y: # Primitive is in front
-            overlap = original_bbox_max.y - prim_bbox_min.y
-            if overlap > 0:
-                prim.location.y += overlap
-                print(f"Moved primitive '{prim.name}' forward by {overlap:.3f} to resolve Y overlap.")
-        else: # Primitive is behind
-            overlap = prim_bbox_max.y - original_bbox_min.y
-            if overlap > 0:
-                prim.location.y -= overlap
-                print(f"Moved primitive '{prim.name}' backward by {overlap:.3f} to resolve Y overlap.")
-
-
-        # X-axis (Left/Right)
-        if prim_center.x > original_center.x: # Primitive is to the right
-            overlap = original_bbox_max.x - prim_bbox_min.x
-            if overlap > 0:
-                prim.location.x += overlap
-                print(f"Moved primitive '{prim.name}' right by {overlap:.3f} to resolve X overlap.")
-        else: # Primitive is to the left
-            overlap = prim_bbox_max.x - original_bbox_min.x
-            if overlap > 0:
-                prim.location.x -= overlap
-                print(f"Moved primitive '{prim.name}' left by {overlap:.3f} to resolve X overlap.")
-                
-    # Update the scene to reflect the changes
-    bpy.context.view_layer.update()
-    print("[INFO] Overlap post-processing finished.")
 
 
 def export_glb(output_path):
@@ -419,16 +275,11 @@ def main(args):
     
     # Normalize scene
     scale, offset = normalize_scene()
-    original_bbox_min, original_bbox_max = scene_bbox()
     print('[INFO] Scene normalized.')
     
     # Add geometric primitives
-    add_geometric_primitives(args.num_primitives, args.primitive_types, args.use_time_seed)
+    add_geometric_primitives(args.num_primitives, args.primitive_types)
     print('[INFO] Geometric primitives added.')
-
-    # Post-process primitives to avoid overlap
-    post_process_primitives_for_overlap(original_bbox_min, original_bbox_max)
-
     
     # Export the result
     os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
@@ -442,7 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_file', type=str, required=True, help='Path to save the output GLB file')
     parser.add_argument('--num_primitives_min', type=int, default=2, help='Minimum number of primitives to add')
     parser.add_argument('--num_primitives_max', type=int, default=8, help='Maximum number of primitives to add')
-    parser.add_argument('--primitive_types', type=str, default='cube,cylinder,sphere,cone', 
+    parser.add_argument('--primitive_types', type=str, default='cube,cylinder,sphere', 
                         help='Comma-separated list of primitive types')
     parser.add_argument('--sha256', type=str, default=None, help='SHA256 hash of the object for reproducible randomness')
     parser.add_argument('--use_time_seed', action='store_true', help='Use current time as random seed for true randomness')

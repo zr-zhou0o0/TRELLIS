@@ -133,7 +133,7 @@ if __name__ == '__main__':
         opt.num_primitives_min, opt.num_primitives_max = num_primitives_range
     except ValueError as e:
         print(f"Error parsing num_primitives: {e}")
-        print("Using default range: 5,8")
+        print("Using default range: 2,8")
         opt.num_primitives_min, opt.num_primitives_max = 2, 8
     
     # Create output directories

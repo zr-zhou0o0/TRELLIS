@@ -382,7 +382,7 @@ def scene_bbox() -> Tuple[Vector, Vector]:
         raise RuntimeError("no objects in scene to compute bounding box for")
     return Vector(bbox_min), Vector(bbox_max)
 
-def normalize_scene() -> Tuple[float, Vector]:
+def normalize_scene(additional_scale: float) -> Tuple[float, Vector]:
     """Normalizes the scene by scaling and translating it to fit in a unit cube centered
     at the origin.
 
@@ -412,7 +412,11 @@ def normalize_scene() -> Tuple[float, Vector]:
     scale = 1 / max(bbox_max - bbox_min) # 所有轴上大减小 取最长的一个轴 作为scale
     scene.scale = scene.scale * scale
 
+    scale = scale * additional_scale
+    scene.scale = scene.scale * additional_scale
+
     # Apply scale to matrix_world.
+    # BUG 不应该是整个场景的中心在原点，而应该是只有目标物体的中心在原点。
     bpy.context.view_layer.update()
     bbox_min, bbox_max = scene_bbox()
     offset = -(bbox_min + bbox_max) / 2 # 把中心移到原点
@@ -458,7 +462,7 @@ def main(arg):
     print('[INFO] Scene initialized.')
     
     # normalize scene
-    scale, offset = normalize_scene()
+    scale, offset = normalize_scene(args.scale)
     print('[INFO] Scene normalized.')
     
     # Initialize camera and lighting
@@ -648,6 +652,8 @@ if __name__ == '__main__':
     parser.add_argument('--split_normal', action='store_true', help='Split the normals of the mesh.')
     parser.add_argument('--save_mesh', action='store_true', help='Save the mesh as a .ply file.')
     parser.add_argument('--save_mask', action='store_true', help='Save the segmentation mask of target object. For partial point cloud generation.')
+    parser.add_argument('--scale', type=float, default=1.0, help='Scale the object during normalization.')
+
     argv = sys.argv[sys.argv.index("--") + 1:]
     args = parser.parse_args(argv)
 

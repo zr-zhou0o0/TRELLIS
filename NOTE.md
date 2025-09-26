@@ -71,7 +71,7 @@ python dataset_toolkits/render.py ObjaverseXL --output_dir datasets/ObjaverseXL_
 
 
 <!-- 创建.blend文件，向物体中随机添加 geometry primitive -->
-python dataset_toolkits/add_geometry.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --num_primitives 3,6 --primitive_types cube,cylinder,sphere --use_time_seed
+python dataset_toolkits/add_geometry.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --num_primitives 7,15 --primitive_types cube,cylinder,sphere,cone --use_time_seed
 
 
 <!-- 渲染添加了 geometry primitive 后的depth和mask -->
@@ -79,7 +79,8 @@ python dataset_toolkits/render_geo.py ObjaverseXL \
     --output_dir datasets/ObjaverseXL_sketchfab \
     --num_views 150 \
     --save_depth \
-    --save_mask
+    --save_mask \
+    --scale 3.0
 
 
 
@@ -91,7 +92,7 @@ python dataset_toolkits/create_partial_pointcloud.py ObjaverseXL \
 
 # TODO
 <!-- 导入glb会自动旋转90度，也就是说，物体的方向没有对上 -->
-<!-- 不同视角的点云也没有对上 -->
+
 
 
 
@@ -119,11 +120,13 @@ pixel_coord = [u, v, 1]^T
 Z_c * pixel_coord = Intrinsic @ cam_coord
 
 
-**1. Render时候的相机c2w w2c intrinsic；depth到rgb的计算方式；物体normalize的变换和逆变换**
+**1. Render时候的相机C2W W2C Intrinsic；Depth到rgb的计算方式；场景Normalize的变换和逆变换**
 
 ## transforms.json
 
-- *遵循Blender的坐标系约定（Y向上，Z向后），并且保存的是相机到世界（c2w）的变换矩阵，格式是标准的 4x4 变换矩阵	[[R, t], [0, 0, 0, 1]]*
+- 遵循Blender的坐标系约定（Y向上，Z向后）
+- 并且保存的是相机到世界（c2w）的变换矩阵
+- 格式是标准的 4x4 变换矩阵	[[R, t], [0, 0, 0, 1]]
 
 - 产生于 normalize scene：
     "aabb": [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]]
@@ -172,14 +175,20 @@ X向右，Y向下，Z向前（观察方向）
 [ 0   0   0   1  ]
 
 
-**2. 从 pixel coord 到 cam 到 world；从depth得到z；从normalized到原位置**
-- 记在纸上了
+**2. 从 Pixel coord 到 Cam 到 World；从Depth得到z；Denormalize到原位置**
+- 像素坐标系到相机坐标系：令 z = 1，则 pixel_coord = Intrinsic @ rays_d, 则 rays_d = Intrinsic^{-1} @ pixel_coord； 其中pixel_coord = [u, v, 1]^T, 这个 rays_d 就是相机射线 
+- 相机坐标系到世界坐标系： world_coord = c2w @ rays_d； 这个 world_coord 就是相机射线在世界坐标系下的方向
+- 由针孔相机模型，射线起点就是 T
+- 由深度图得到 z： z = distance = depth[u, v] * (far - near) + near
+- 则点云坐标 world_point = T + z * world_coord
+
+
 
 - *注意*
 - 第一次normalize是raw到render/add_geometry并存储glb，先normalize再add，所以add之后其实还有可能又不normalized了
 - 第二次normalize是加了 geometry primitive 后 render_geo 这里还有一次normalize，但是没有保存 3d asset，所以需要反变换回去。
 
-
+- blender渲染深度的distance也是z轴距离，而不是沿射线的距离。所以只要像素坐标系中设定z=1即可，不需要normalize向量。
 
 
 
