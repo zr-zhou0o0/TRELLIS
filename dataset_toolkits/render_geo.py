@@ -10,11 +10,42 @@ from functools import partial
 from subprocess import DEVNULL, call
 import numpy as np
 from utils import sphere_hammersley_sequence
+import subprocess
 
 
 BLENDER_LINK = 'https://download.blender.org/release/Blender3.0/blender-3.0.1-linux-x64.tar.xz'
 BLENDER_INSTALLATION_PATH = '/tmp'
 BLENDER_PATH = f'{BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64/blender'
+
+def _get_best_gpu():
+    """Select the GPU with the lowest process percentage usage."""
+    try:
+        # Query GPU index and utilization, format as CSV
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=index,utilization.gpu', '--format=csv,noheader,nounits'],
+            capture_output=True, text=True, check=True
+        )
+        
+        gpus = []
+        for line in result.stdout.strip().split('\n'):
+            if not line:
+                continue
+            index, usage = line.split(',')
+            gpus.append({'id': int(index.strip()), 'usage': int(usage.strip())})
+        
+        if not gpus:
+            print("No GPUs found by nvidia-smi.")
+            return None
+            
+        # Find the GPU with the minimum usage
+        best_gpu = min(gpus, key=lambda x: (x['usage'], -x['id']))
+        print(f"Found {len(gpus)} GPUs. Selected GPU {best_gpu['id']} with {best_gpu['usage']}% usage.")
+        return best_gpu['id']
+        
+    except (FileNotFoundError, subprocess.CalledProcessError, Exception) as e:
+        print(f"Could not select best GPU: {e}. Falling back to default behavior.")
+        return None
+
 
 def _install_blender():
     if not os.path.exists(BLENDER_PATH):
@@ -24,7 +55,7 @@ def _install_blender():
         os.system(f'tar -xvf {BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64.tar.xz -C {BLENDER_INSTALLATION_PATH}')
 
 
-def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save_mask=False , scale=1.0):
+def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save_normal=False, save_mask=False , scale=1.0, gpu_id=None):
     # Output to renders_geo directory instead of renders
     output_folder = os.path.join(output_dir, 'renders_geo', sha256)
     
@@ -52,8 +83,14 @@ def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save
         '--scale', str(scale)
     ]
     
+    if gpu_id is not None:
+        args.extend(['--gpu_id', str(gpu_id)])
+
     if save_depth:
         args.append('--save_depth')
+        
+    if save_normal:
+        args.append('--save_normal')
     
     if save_mask:
         args.append('--save_mask')
@@ -90,6 +127,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_workers', type=int, default=8)
     parser.add_argument('--save_depth', action='store_true',
                         help='Save depth maps during rendering')
+    parser.add_argument('--save_normal', action='store_true',
+                        help='Save normal maps during rendering')
     parser.add_argument('--save_mask', action='store_true',
                         help='Save object masks during rendering (excluding random_geometry objects)')
     parser.add_argument('--scale', type=float, default=1.0,
@@ -103,6 +142,8 @@ if __name__ == '__main__':
     # install blender
     print('Checking blender...', flush=True)
     _install_blender()
+    best_gpu_id = _get_best_gpu()
+    
 
     # get file list
     if not os.path.exists(os.path.join(opt.output_dir, 'metadata.csv')):
@@ -163,8 +204,10 @@ if __name__ == '__main__':
                    output_dir=opt.output_dir, 
                    num_views=opt.num_views,
                    save_depth=opt.save_depth, 
+                   save_normal=opt.save_normal,
                    save_mask=opt.save_mask,
-                   scale=opt.scale)
+                   scale=opt.scale,
+                   gpu_id=best_gpu_id)
     
     rendered = dataset_utils.foreach_instance(metadata_geo, opt.output_dir, func, max_workers=opt.max_workers, desc='Rendering geo objects')
     rendered = pd.concat([rendered, pd.DataFrame.from_records(records)])

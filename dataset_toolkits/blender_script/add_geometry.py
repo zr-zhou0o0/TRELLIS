@@ -134,12 +134,12 @@ def normalize_scene():
     
     return scale, offset
 
-def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, scale_range=(0.1, 0.8), placement_offset=0.2):
+def create_random_primitive(idx, primitive_type, empty_parent, bbox_min, bbox_max, scale_range=(0.1, 0.4), placement_offset=0.0):
     """Create a random geometric primitive as a child of the empty parent."""
     print(f"[DEBUG] Bbox min: {bbox_min}, bbox max: {bbox_max}")
 
     # Calculate position within the bounding box with some margin
-    margin = 0.5 # 0.1
+    margin = 0.3 # 0.1
     
     # Decide which axis to place the primitive along (x, y, or z)
     axis = random.choice(['x', 'y', 'z'])
@@ -148,25 +148,25 @@ def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, sc
 
     if axis == 'x':
         if side == -1:
-            pos_x = random.uniform(bbox_min.x - placement_offset - margin, bbox_min.x - margin)
+            pos_x = random.uniform(bbox_min.x - placement_offset - margin, bbox_min.x - placement_offset)
         else:
-            pos_x = random.uniform(bbox_max.x + margin, bbox_max.x + placement_offset + margin)
-        pos_y = random.uniform(bbox_min.y, bbox_max.y)
-        pos_z = random.uniform(bbox_min.z, bbox_max.z)
+            pos_x = random.uniform(bbox_max.x + placement_offset, bbox_max.x + placement_offset + margin)
+        pos_y = random.uniform(bbox_min.y - margin, bbox_max.y + margin)
+        pos_z = random.uniform(bbox_min.z - margin, bbox_max.z + margin)
     elif axis == 'y':
-        pos_x = random.uniform(bbox_min.x, bbox_max.x)
         if side == -1:
-            pos_y = random.uniform(bbox_min.y - placement_offset - margin, bbox_min.y - margin)
+            pos_y = random.uniform(bbox_min.y - placement_offset - margin, bbox_min.y - placement_offset)
         else:
-            pos_y = random.uniform(bbox_max.y + margin, bbox_max.y + placement_offset + margin)
-        pos_z = random.uniform(bbox_min.z, bbox_max.z)
+            pos_y = random.uniform(bbox_max.y + placement_offset, bbox_max.y + placement_offset + margin)
+        pos_x = random.uniform(bbox_min.x - margin, bbox_max.x + margin)
+        pos_z = random.uniform(bbox_min.z - margin, bbox_max.z + margin)
     else: # axis == 'z'
-        pos_x = random.uniform(bbox_min.x, bbox_max.x)
-        pos_y = random.uniform(bbox_min.y, bbox_max.y)
         if side == -1:
-            pos_z = random.uniform(bbox_min.z - placement_offset - margin, bbox_min.z - margin)
+            pos_z = random.uniform(bbox_min.z - placement_offset - margin, bbox_min.z - placement_offset)
         else:
-            pos_z = random.uniform(bbox_max.z + margin, bbox_max.z + placement_offset + margin)
+            pos_z = random.uniform(bbox_max.z + placement_offset, bbox_max.z + placement_offset + margin)
+        pos_x = random.uniform(bbox_min.x - margin, bbox_max.x + margin)
+        pos_y = random.uniform(bbox_min.y - margin, bbox_max.y + margin)
     
     # Random scale
     scale = random.uniform(scale_range[0], scale_range[1])
@@ -209,6 +209,7 @@ def create_random_primitive(primitive_type, empty_parent, bbox_min, bbox_max, sc
     
     # Get the created object and set its properties
     primitive_obj = bpy.context.active_object
+    primitive_obj.name = f"{idx}_{axis}"
     primitive_obj.scale = (scale, scale, scale)
     
     # For cube primitives, apply additional random scaling to each axis to create cuboids
@@ -299,7 +300,7 @@ def add_geometric_primitives(num_primitives, primitive_types, use_time_seed):
             print(f"[DEBUG] Random seed for primitive {i+1}: {seed}")
 
         primitive_type = random.choice(primitive_types)
-        primitive_obj = create_random_primitive(primitive_type, empty_obj, bbox_min, bbox_max)
+        primitive_obj = create_random_primitive(i, primitive_type, empty_obj, bbox_min, bbox_max)
         
         # Primitives are already parented to empty_obj in create_random_primitive()
         # No need to move to any collection - they stay in the default scene collection
@@ -314,6 +315,7 @@ def post_process_primitives_for_overlap(original_bbox_min, original_bbox_max):
     If an overlap is detected, move the primitive away from the original object.
     """
     print("[INFO] Starting post-processing to prevent overlaps...")
+    print(f"[DEBUG] Bbox min: {original_bbox_min}, bbox max: {original_bbox_max}")
     
     # Find the empty object holding the random primitives
     random_geometry_parent = bpy.data.objects.get("random_geometry")
@@ -340,43 +342,49 @@ def post_process_primitives_for_overlap(original_bbox_min, original_bbox_max):
         
         # Check for overlap on each axis and apply correction
         
+        axis = prim.name.split('_')[-1]
+        
+        
          
         # Z-axis (Up/Down)
-        if prim_center.z > original_center.z: # Primitive is above
-            overlap = original_bbox_max.z - prim_bbox_min.z
-            if overlap > 0:
-                prim.location.z += overlap
-                print(f"Moved primitive '{prim.name}' up by {overlap:.3f} to resolve Z overlap.")
-        else: # Primitive is below
-            overlap = prim_bbox_max.z - original_bbox_min.z
-            if overlap > 0:
-                prim.location.z -= overlap
-                print(f"Moved primitive '{prim.name}' down by {overlap:.3f} to resolve Z overlap.")
+        if axis == 'z':
+            if prim_center.z > original_center.z: # Primitive is above
+                overlap = original_bbox_max.z - prim_bbox_min.z
+                if overlap > 0:
+                    prim.location.z += overlap
+                    print(f"Moved primitive '{prim.name}' up by {overlap:.3f} to resolve Z overlap.")
+            else: # Primitive is below
+                overlap = prim_bbox_max.z - original_bbox_min.z
+                if overlap > 0:
+                    prim.location.z -= overlap
+                    print(f"Moved primitive '{prim.name}' down by {overlap:.3f} to resolve Z overlap.")
 
         # Y-axis (Front/Back)
-        if prim_center.y > original_center.y: # Primitive is in front
-            overlap = original_bbox_max.y - prim_bbox_min.y
-            if overlap > 0:
-                prim.location.y += overlap
-                print(f"Moved primitive '{prim.name}' forward by {overlap:.3f} to resolve Y overlap.")
-        else: # Primitive is behind
-            overlap = prim_bbox_max.y - original_bbox_min.y
-            if overlap > 0:
-                prim.location.y -= overlap
-                print(f"Moved primitive '{prim.name}' backward by {overlap:.3f} to resolve Y overlap.")
+        if axis == "y":
+            if prim_center.y > original_center.y: # Primitive is in front
+                overlap = original_bbox_max.y - prim_bbox_min.y
+                if overlap > 0:
+                    prim.location.y += overlap
+                    print(f"Moved primitive '{prim.name}' forward by {overlap:.3f} to resolve Y overlap.")
+            else: # Primitive is behind
+                overlap = prim_bbox_max.y - original_bbox_min.y
+                if overlap > 0:
+                    prim.location.y -= overlap
+                    print(f"Moved primitive '{prim.name}' backward by {overlap:.3f} to resolve Y overlap.")
 
 
         # X-axis (Left/Right)
-        if prim_center.x > original_center.x: # Primitive is to the right
-            overlap = original_bbox_max.x - prim_bbox_min.x
-            if overlap > 0:
-                prim.location.x += overlap
-                print(f"Moved primitive '{prim.name}' right by {overlap:.3f} to resolve X overlap.")
-        else: # Primitive is to the left
-            overlap = prim_bbox_max.x - original_bbox_min.x
-            if overlap > 0:
-                prim.location.x -= overlap
-                print(f"Moved primitive '{prim.name}' left by {overlap:.3f} to resolve X overlap.")
+        if axis == "x":
+            if prim_center.x > original_center.x: # Primitive is to the right
+                overlap = original_bbox_max.x - prim_bbox_min.x
+                if overlap > 0:
+                    prim.location.x += overlap
+                    print(f"Moved primitive '{prim.name}' right by {overlap:.3f} to resolve X overlap.")
+            else: # Primitive is to the left
+                overlap = prim_bbox_max.x - original_bbox_min.x
+                if overlap > 0:
+                    prim.location.x -= overlap
+                    print(f"Moved primitive '{prim.name}' left by {overlap:.3f} to resolve X overlap.")
                 
     # Update the scene to reflect the changes
     bpy.context.view_layer.update()
@@ -429,7 +437,7 @@ def main(args):
     print('[INFO] Geometric primitives added.')
 
     # Post-process primitives to avoid overlap
-    # post_process_primitives_for_overlap(original_bbox_min, original_bbox_max)
+    post_process_primitives_for_overlap(original_bbox_min, original_bbox_max)
 
     
     # Export the result

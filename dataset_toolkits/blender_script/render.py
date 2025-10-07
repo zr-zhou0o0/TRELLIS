@@ -48,6 +48,34 @@ EXT = {
     'TARGA': 'tga'
 }
 
+
+def setup_gpu(gpu_id):
+    """Configures Blender to use a specific GPU for Cycles rendering."""
+    try:
+        bpy.context.preferences.addons['cycles'].preferences.get_devices()
+        bpy.context.scene.cycles.device = 'GPU'
+        prefs = bpy.context.preferences.addons['cycles'].preferences
+        prefs.compute_device_type = 'CUDA'  # Or 'OPTIX' or 'HIP' depending on your GPU
+        
+        # De-select all devices first
+        for device in prefs.devices:
+            device.use = False
+            
+        # Select the specified GPU
+        if gpu_id < len(prefs.devices):
+            prefs.devices[gpu_id].use = True
+            print(f"Successfully configured to use GPU {gpu_id}: {prefs.devices[gpu_id].name}")
+        else:
+            print(f"Warning: GPU ID {gpu_id} is out of range. Found {len(prefs.devices)} devices. Falling back to default.")
+            # Fallback: use the first available GPU if the ID is invalid
+            if prefs.devices:
+                prefs.devices[0].use = True
+                print(f"Fell back to using GPU 0: {prefs.devices[0].name}")
+
+    except Exception as e:
+        print(f"Error setting up GPU: {e}. Rendering will proceed with default settings.")
+
+
 def init_render(engine='CYCLES', resolution=512, geo_mode=False):
     bpy.context.scene.render.engine = engine
     bpy.context.scene.render.resolution_x = resolution
@@ -72,7 +100,7 @@ def init_render(engine='CYCLES', resolution=512, geo_mode=False):
     
 def init_nodes(save_depth=False, save_normal=False, save_albedo=False, save_mist=False, save_mask=False):
     if not any([save_depth, save_normal, save_albedo, save_mist, save_mask]):
-        return {}, {}
+        return {}, {}, {}
     outputs = {}
     spec_nodes = {}
     
@@ -653,9 +681,13 @@ if __name__ == '__main__':
     parser.add_argument('--save_mesh', action='store_true', help='Save the mesh as a .ply file.')
     parser.add_argument('--save_mask', action='store_true', help='Save the segmentation mask of target object. For partial point cloud generation.')
     parser.add_argument('--scale', type=float, default=1.0, help='Scale the object during normalization.')
+    parser.add_argument('--gpu_id', type=int, default=None, help='ID of the GPU to use for rendering')
 
     argv = sys.argv[sys.argv.index("--") + 1:]
     args = parser.parse_args(argv)
+    
+    if args.gpu_id is not None:
+        setup_gpu(args.gpu_id)
 
     main(args)
     

@@ -13,7 +13,10 @@ def add_args(parser: argparse.ArgumentParser):
 
 
 def get_metadata(**kwargs):
-    metadata = pd.read_csv("hf://datasets/JeffreyXiang/TRELLIS-500K/3D-FUTURE.csv")
+    try:
+        metadata = pd.read_csv("hf://datasets/JeffreyXiang/TRELLIS-500K/3D-FUTURE.csv")
+    except:
+        metadata = pd.read_csv("datasets/downloads/3D-FUTURE.csv")
     return metadata
         
 

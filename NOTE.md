@@ -1,10 +1,26 @@
+# **网络连接**
+- http连不上github 用ssh下载
+- 可以ping通huggingface，但是代码里连接不上，暂时用镜像站
+- requests.exceptions.ConnectionError: (MaxRetryError("HTTPSConnectionPool(host='huggingface.co', port=443): Max retries exceeded with url: /api/datasets/JeffreyXiang/TRELLIS-500K (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7fd0457c6450>: Failed to establish a new connection: [Errno 101] Network is unreachable'))"), '(Request ID: e6165af7-c129-4866-9929-a2eead03d131)')
+    - 找不到代理配置文件，找不到有代理的地址和端口
+    - export HF_ENDPOINT=https://hf-mirror.com
+
+
 # **Dataset Preprocess**
 -> DATASET.md
+
+<!-- 配环境 -->
+install: . ./dataset_toolkits/setup.sh
 
 python dataset_toolkits/build_metadata.py ABO --output_dir datasets/ABO
 python dataset_toolkits/build_metadata.py Toys4k --output_dir datasets/Toys4k
 python dataset_toolkits/build_metadata.py ObjaverseXL --source sketchfab --output_dir datasets/ObjaverseXL_sketchfab
 python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+
+
+<!-- ObjaverseXL不报错但是3DFUTURE报错 -->
+手动下载csv，读取本地文件。看来确实是读到了镜像站的错误页面。
+
 
 <!-- ABO 154G 即使--world_size 2000 并不改变download大小 -->
 python dataset_toolkits/download.py ABO --output_dir datasets/ABO --rank 1 --world_size 2000
@@ -14,23 +30,40 @@ python dataset_toolkits/download.py 3D-FUTURE --output_dir datasets/3D-FUTURE --
 
 python dataset_toolkits/build_metadata.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab
 
+
 <!-- render -->
 <!-- 没有sudo权限 但是仍然在tmp下安装上了blender -->
 python dataset_toolkits/render.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab
+python dataset_toolkits/render.py 3D-FUTURE --output_dir datasets/3D-FUTURE 
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+
 
 . ./setup.sh --new-env --basic
+. ./setup.sh --basic
 
 pip install git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8
 
 python dataset_toolkits/voxelize.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab
+python dataset_toolkits/voxelize.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 python dataset_toolkits/extract_feature.py --output_dir datasets/ObjaverseXL_sketchfab
+python dataset_toolkits/extract_feature.py --output_dir datasets/3D-FUTURE
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 python dataset_toolkits/encode_ss_latent.py --output_dir datasets/ObjaverseXL_sketchfab
+python dataset_toolkits/encode_ss_latent.py --output_dir datasets/3D-FUTURE
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 cd TRELLIS
 git submodule init
 git submodule update
+或者手动下载并复制上去，无需安装。
+考虑到不能联网，所以直接不要init submodule。
+如果已经init了：
+git submodule deinit -f trellis/representations/mesh/flexicubes
+git add .gitmodules
+git rm --cached trellis/representations/mesh/flexicubes
 
 . ./setup.sh --kaolin
 
@@ -49,8 +82,10 @@ pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https
 python dataset_toolkits/encode_latent.py --output_dir datasets/ObjaverseXL_sketchfab --world_size 10
 
 python dataset_toolkits/render_cond.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab
+python dataset_toolkits/render_cond.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 python dataset_toolkits/build_metadata.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 
 
@@ -60,19 +95,14 @@ python dataset_toolkits/build_metadata.py ObjaverseXL --output_dir datasets/Obja
 python dataset_toolkits/build_metadata.py ObjaverseXL --source sketchfab --output_dir datasets/ObjaverseXL_sketchfab
 python dataset_toolkits/download.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --world_size 40000
 
-
 python dataset_toolkits/build_metadata.py ObjaverseXL --source sketchfab --output_dir datasets/ObjaverseXL_sketchfab 
-
 
 <!-- 渲染depth和mask -->
 <!-- dataset_toolkits/blender_script/render.py 中的 'init_nodes' 需要删除 'View Layer' 中间的空格 才能成功运行 -->
 python dataset_toolkits/render.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --save_depth --save_mask
 
-
-
 <!-- 创建.blend文件，向物体中随机添加 geometry primitive -->
 python dataset_toolkits/add_geometry.py ObjaverseXL --output_dir datasets/ObjaverseXL_sketchfab --num_primitives 2,5 --primitive_types cube,cylinder,sphere,cone --use_time_seed
-
 
 <!-- 渲染添加了 geometry primitive 后的depth和mask -->
 # TODO 这个scale应该对准物体而非整个场景的中心
@@ -83,30 +113,54 @@ python dataset_toolkits/render_geo.py ObjaverseXL \
     --save_mask \
     --scale 1.0
 
-
-
 <!-- 通过 depth 和 mask 生成 partial pointcloud -->
 <!-- 实质上是把添加 geo primitive 后的 normalized scene 转换成 partial pointcloud，而非 raw model （未经normalize的） -->
 python dataset_toolkits/create_partial_pointcloud.py ObjaverseXL \
     --output_dir datasets/ObjaverseXL_sketchfab
 
-
 # TODO
 <!-- 导入glb会自动旋转90度，也就是说，物体的方向没有对上 -->
 
-
-
-
 <!-- 确保 meta data 可以记录是否添加 geometry primitive -->
 # TODO 在metadata里添加统计 geometry primitive / render geo / create pc 的列
-
 
 <!-- 记得及时push到GitHub上 -->
 
 
 
 
+# **Generate Partial Pointcloud 3DFUTURE**
 
+- 移动zip到 datasets/3D-FUTURE/raw 下
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+python dataset_toolkits/download.py 3D-FUTURE --output_dir datasets/3D-FUTURE --world_size 2000
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+
+<!-- 记得改gpu序号！ -->
+python dataset_toolkits/render.py 3D-FUTURE --output_dir datasets/3D-FUTURE --save_depth --save_normal --save_mask
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+
+python dataset_toolkits/add_geometry.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_primitives 4,7 --primitive_types cube,cylinder,sphere,cone --use_time_seed
+
+python dataset_toolkits/render_geo.py 3D-FUTURE \
+    --output_dir datasets/3D-FUTURE \
+    --num_views 60 \
+    --save_depth \
+    --save_normal \
+    --save_mask \
+    --scale 1.0
+
+python dataset_toolkits/create_partial_pointcloud.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+
+
+TODO
+2. normal
+1. 正态
+3. 每个view的pcd， 和所有view合起来的partial pcd
+4. 数据结构对应
+5. 无遮挡的pcd
+6. git push的问题
+6. （不需要metadata了）
 
 
 
