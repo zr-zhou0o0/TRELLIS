@@ -76,6 +76,44 @@ def setup_gpu(gpu_id):
         print(f"Error setting up GPU: {e}. Rendering will proceed with default settings.")
 
 
+def delete_geometry_by_name(name_pattern):
+    """
+    Finds and deletes all objects matching a name pattern and their children.
+    """
+    # Use a list to collect objects to delete to avoid issues with modifying collections while iterating
+    objects_to_delete = []
+    
+    # Find all parent objects matching the name pattern
+    parent_objects = [obj for obj in bpy.data.objects if name_pattern in obj.name]
+    
+    for parent in parent_objects:
+        # Recursively find all children
+        children_recursive = []
+        def get_children(obj):
+            for child in obj.children:
+                children_recursive.append(child)
+                get_children(child)
+        
+        get_children(parent)
+        
+        # Add children and the parent itself to the main deletion list
+        objects_to_delete.extend(children_recursive)
+        objects_to_delete.append(parent)
+
+    if objects_to_delete:
+        # Remove duplicates
+        objects_to_delete = list(set(objects_to_delete))
+        print(f"[INFO] Deleting {len(objects_to_delete)} objects related to '{name_pattern}'.")
+        
+        # Deselect all, select objects to be deleted, and delete them
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in objects_to_delete:
+            # Object might have been deleted already if it was a child of another deleted object
+            if obj.name in bpy.data.objects:
+                bpy.data.objects[obj.name].select_set(True)
+        bpy.ops.object.delete()
+
+
 def init_render(engine='CYCLES', resolution=512, geo_mode=False):
     bpy.context.scene.render.engine = engine
     bpy.context.scene.render.resolution_x = resolution
@@ -139,11 +177,31 @@ def init_nodes(save_depth=False, save_normal=False, save_albedo=False, save_mist
         spec_nodes['depth_map'] = map
     
     if save_normal:
+        # normal_node = nodes.new(type='ShaderNodeNormalMap')
+        # output_node = nodes.new(type='ShaderNodeOutputMaterial')
+        # normal_node.location = (-300, 0)
+        # output_node.location = (300, 0)
+
+        # links = mat.node_tree.links
+        # links.new(normal_node.outputs['Normal'], output_node.inputs['Surface'])
+
+        # bpy.context.scene.cycles.samples = 256  # 提高样本数量以获得更好的质量
+        # bpy.context.scene.render.image_settings.file_format = 'OPEN_EXR' 
+        # bpy.context.scene.render.image_settings.color_mode = 'RGBA'  
+        # output_path = os.path.join(os.path.dirname(bpy.data.filepath), "normal_map.exr")  
+        # bpy.context.scene.render.filepath = output_path
+
+        # bpy.ops.render.render(write_still=True)  
+            
         normal_file_output = nodes.new('CompositorNodeOutputFile')
+        # links.new(normal_node.outputs['Normal'], normal_file_output.inputs['Surface'])
+        
         normal_file_output.base_path = ''
         normal_file_output.file_slots[0].use_node_format = True
         normal_file_output.format.file_format = 'OPEN_EXR'
-        normal_file_output.format.color_mode = 'RGB'
+        # normal_file_output.format.file_format = 'PNG'
+        # normal_file_output.format.color_mode = 'RGB'
+        normal_file_output.format.color_mode = 'RGBA'
         normal_file_output.format.color_depth = '16'
         
         links.new(render_layers.outputs['Normal'], normal_file_output.inputs[0])
@@ -510,6 +568,12 @@ def main(arg):
         "frames": []
     }
     views = json.loads(arg.views)
+    
+    if arg.no_geo:
+        delete_geometry_by_name('random_geometry')
+        print('[INFO] --no_geo: Removed random geometry objects.')
+
+        
 
     # Create mask node and outputs
     # Number of nodes and links are determined by the number of objects in the scene
@@ -673,6 +737,7 @@ if __name__ == '__main__':
     parser.add_argument('--resolution', type=int, default=512, help='Resolution of the images.')
     parser.add_argument('--engine', type=str, default='CYCLES', help='Blender internal engine for rendering. E.g. CYCLES, BLENDER_EEVEE, ...')
     parser.add_argument('--geo_mode', action='store_true', help='Geometry mode for rendering.')
+    parser.add_argument('--no_geo', action='store_true', help='Disable geometry mode for rendering.')
     parser.add_argument('--save_depth', action='store_true', help='Save the depth maps.')
     parser.add_argument('--save_normal', action='store_true', help='Save the normal maps.')
     parser.add_argument('--save_albedo', action='store_true', help='Save the albedo maps.')

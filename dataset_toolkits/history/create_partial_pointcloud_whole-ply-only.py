@@ -202,18 +202,6 @@ def save_pointcloud_ply(points, filename):
         for point in points:
             f.write(f"{point[0]:.6f} {point[1]:.6f} {point[2]:.6f}\n")
 
-def save_pointcloud_npy(points, filename):
-    # Ensure the filename has the .npy extension
-    if not filename.endswith('.npy'):
-        filename += '.npy'
-        
-    # If the input is a PyTorch tensor, convert it to a NumPy array
-    if hasattr(points, 'cpu'):  # A simple check if it's a PyTorch tensor
-        points = points.cpu().numpy()
-    
-    # Save the NumPy array to a .npy file
-    np.save(filename, points)
-    # print(f"Point cloud saved to {filename}")
 
 
 if __name__ == '__main__':
@@ -296,8 +284,7 @@ if __name__ == '__main__':
         renders_dir = os.path.join(opt.output_dir, 'renders_geo', sha256)
         pointcloud_dir = os.path.join(opt.output_dir, 'pointcloud')
         os.makedirs(pointcloud_dir, exist_ok=True)
-        # output_file = os.path.join(pointcloud_dir, f'{sha256}.ply')
-        output_file = os.path.join(renders_dir, 'total_pnts.ply')
+        output_file = os.path.join(pointcloud_dir, f'{sha256}.ply')
         if os.path.exists(output_file):
             processed.append({'sha256': sha256, 'pointcloud_processed': True, 'pointcloud_path': f'pointcloud/{sha256}.ply'})
             continue
@@ -331,15 +318,6 @@ if __name__ == '__main__':
                     points = depth_to_pointcloud(depth_map, camera_intrinsics, camera_pose, near, far, mask)
                     if len(points) > 0:
                         all_points.append(points)
-                        
-                        points = points - torch.from_numpy(np.array(offset)).float().to(points.device)
-                        points = points / scale
-                        points = points.cpu().numpy()
-                        pc_path = os.path.join(renders_dir, f'{i:03d}_pnts.ply')
-
-                        save_pointcloud_ply(points, pc_path)
-                        save_pointcloud_npy(points, pc_path.replace('.ply', '.npy'))
-
                 except Exception as e:
                     print(f"Error processing view {i} of {sha256}: {e}")
         if not all_points:
@@ -355,7 +333,6 @@ if __name__ == '__main__':
 
         points_np = combined_points.cpu().numpy()
         save_pointcloud_ply(points_np, output_file)
-        save_pointcloud_npy(points_np, output_file.replace('.ply', '.npy'))
         processed.append({'sha256': sha256, 'pointcloud_processed': True, 'pointcloud_path': f'pointcloud/{sha256}.ply'})
 
     processed = pd.concat([pd.DataFrame(processed), pd.DataFrame.from_records(records)])

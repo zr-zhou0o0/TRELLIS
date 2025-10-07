@@ -133,34 +133,47 @@ python dataset_toolkits/create_partial_pointcloud.py ObjaverseXL \
 
 - 移动zip到 datasets/3D-FUTURE/raw 下
 python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
-python dataset_toolkits/download.py 3D-FUTURE --output_dir datasets/3D-FUTURE --world_size 2000
+python dataset_toolkits/download.py 3D-FUTURE --output_dir datasets/3D-FUTURE --world_size 200
 python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 <!-- 记得改gpu序号！ -->
-python dataset_toolkits/render.py 3D-FUTURE --output_dir datasets/3D-FUTURE --save_depth --save_normal --save_mask
-python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+pip install openexr
+<!-- python dataset_toolkits/render.py 3D-FUTURE --output_dir datasets/3D-FUTURE --save_depth --save_normal --save_mask --num_views 60  -->
 
+<!-- 先加primitive 每个保存到两个glb里面 分别再渲染-找pc 或者在渲染完整pc的时候先删geo -->
 python dataset_toolkits/add_geometry.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_primitives 4,7 --primitive_types cube,cylinder,sphere,cone --use_time_seed
 
-python dataset_toolkits/render_geo.py 3D-FUTURE \
-    --output_dir datasets/3D-FUTURE \
-    --num_views 60 \
-    --save_depth \
-    --save_normal \
-    --save_mask \
-    --scale 1.0
+<!-- 生成无遮挡的pc -->
+python dataset_toolkits/render_no-geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_normal --save_mask --scale 1.0
+python dataset_toolkits/create_obj_pointcloud.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
+<!-- 生成有遮挡的pc -->
+python dataset_toolkits/render_geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_normal --save_mask --scale 1.0
+python dataset_toolkits/exr_to_png.py 3D-FUTURE
 python dataset_toolkits/create_partial_pointcloud.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+
+<!-- python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE -->
+
+
+
+
+# **git**
+<!-- 只改name和email还是用不了ssh -->
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
+<!-- git认为太草率，不认可这个private key -->
+GIT_SSH_COMMAND="ssh -i /home/junfeng/project-zirui/ssh/id_rsa" git push
+<!-- 切换回https-->
+git remote set-url origin https://github.com/zr-zhou0o0/TRELLIS.git
+<!-- fatal: unable to access 'https://github.com/zr-zhou0o0/TRELLIS.git/': Error in the HTTP2 framing layer -->
+<!-- 换一个版本，第一次不行，第二次莫名其妙成功了 -->
+git config http.version HTTP/1.1
+git config http.version HTTP/2.0
+
 
 
 TODO
-2. normal
 1. 正态
-3. 每个view的pcd， 和所有view合起来的partial pcd
-4. 数据结构对应
-5. 无遮挡的pcd
-6. git push的问题
-6. （不需要metadata了）
 
 
 

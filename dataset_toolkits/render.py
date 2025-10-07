@@ -78,6 +78,7 @@ def _render(file_path, sha256, output_dir, num_views, save_depth=False, save_nor
         '--resolution', '512',
         '--output_folder', output_folder,
         '--engine', 'CYCLES',
+        '--no_geo',
         '--save_mesh',
     ]
     

@@ -202,18 +202,6 @@ def save_pointcloud_ply(points, filename):
         for point in points:
             f.write(f"{point[0]:.6f} {point[1]:.6f} {point[2]:.6f}\n")
 
-def save_pointcloud_npy(points, filename):
-    # Ensure the filename has the .npy extension
-    if not filename.endswith('.npy'):
-        filename += '.npy'
-        
-    # If the input is a PyTorch tensor, convert it to a NumPy array
-    if hasattr(points, 'cpu'):  # A simple check if it's a PyTorch tensor
-        points = points.cpu().numpy()
-    
-    # Save the NumPy array to a .npy file
-    np.save(filename, points)
-    # print(f"Point cloud saved to {filename}")
 
 
 if __name__ == '__main__':
@@ -241,6 +229,7 @@ if __name__ == '__main__':
         raise ValueError('metadata.csv not found')
     metadata = pd.read_csv(os.path.join(opt.output_dir, 'metadata.csv'))
 
+    # TODO
     if opt.instances is None:
         # Filter for objects that have been rendered with geo
         if 'rendered_geo' in metadata.columns:
@@ -248,12 +237,12 @@ if __name__ == '__main__':
         else:
             print("Warning: 'rendered_geo' column not found in metadata. Make sure to run render_geo.py first.")
             # Fallback: check if renders_geo directories exist
-            renders_geo_exists = []
+            renders_exists = []
             for _, row in metadata.iterrows():
                 sha256 = row['sha256']
-                renders_geo_dir = os.path.join(opt.output_dir, 'renders_geo', sha256)
-                renders_geo_exists.append(os.path.exists(os.path.join(renders_geo_dir, 'transforms.json')))
-            metadata = metadata[renders_geo_exists]
+                renders_dir = os.path.join(opt.output_dir, 'renders_no-geo', sha256)
+                renders_exists.append(os.path.exists(os.path.join(renders_dir, 'transforms.json')))
+            metadata = metadata[renders_exists]
         
         if opt.filter_low_aesthetic_score is not None:
             metadata = metadata[metadata['aesthetic_score'] >= opt.filter_low_aesthetic_score]
@@ -276,12 +265,12 @@ if __name__ == '__main__':
 
     # Filter out objects that are already processed
     for sha256 in copy.copy(metadata['sha256'].values):
-        pointcloud_file = os.path.join(opt.output_dir, 'pointcloud', f'{sha256}.ply')
+        pointcloud_file = os.path.join(opt.output_dir, 'pointcloud_obj', f'{sha256}.ply')
         if os.path.exists(pointcloud_file):
             records.append({
                 'sha256': sha256, 
                 'pointcloud_processed': True, 
-                'pointcloud_path': f'pointcloud/{sha256}.ply'
+                'pointcloud_path': f'pointcloud_obj/{sha256}.ply'
             })
             metadata = metadata[metadata['sha256'] != sha256]
 
@@ -293,16 +282,15 @@ if __name__ == '__main__':
     processed = []
     for idx, row in tqdm(metadata.iterrows(), total=len(metadata), desc='Creating point clouds'):
         sha256 = row['sha256']
-        renders_dir = os.path.join(opt.output_dir, 'renders_geo', sha256)
-        pointcloud_dir = os.path.join(opt.output_dir, 'pointcloud')
+        renders_dir = os.path.join(opt.output_dir, 'renders_no-geo', sha256)
+        pointcloud_dir = os.path.join(opt.output_dir, 'pointcloud_obj')
         os.makedirs(pointcloud_dir, exist_ok=True)
-        # output_file = os.path.join(pointcloud_dir, f'{sha256}.ply')
-        output_file = os.path.join(renders_dir, 'total_pnts.ply')
+        output_file = os.path.join(pointcloud_dir, f'{sha256}.ply')
         if os.path.exists(output_file):
             processed.append({'sha256': sha256, 'pointcloud_processed': True, 'pointcloud_path': f'pointcloud/{sha256}.ply'})
             continue
         if not os.path.exists(renders_dir):
-            print(f"Warning: renders_geo directory not found for {sha256}")
+            print(f"Warning: renders directory not found for {sha256}")
             processed.append({'sha256': sha256, 'pointcloud_processed': False, 'pointcloud_path': None})
             continue
         transforms_path = os.path.join(renders_dir, 'transforms.json')
@@ -331,15 +319,6 @@ if __name__ == '__main__':
                     points = depth_to_pointcloud(depth_map, camera_intrinsics, camera_pose, near, far, mask)
                     if len(points) > 0:
                         all_points.append(points)
-                        
-                        points = points - torch.from_numpy(np.array(offset)).float().to(points.device)
-                        points = points / scale
-                        points = points.cpu().numpy()
-                        pc_path = os.path.join(renders_dir, f'{i:03d}_pnts.ply')
-
-                        save_pointcloud_ply(points, pc_path)
-                        save_pointcloud_npy(points, pc_path.replace('.ply', '.npy'))
-
                 except Exception as e:
                     print(f"Error processing view {i} of {sha256}: {e}")
         if not all_points:
@@ -355,7 +334,6 @@ if __name__ == '__main__':
 
         points_np = combined_points.cpu().numpy()
         save_pointcloud_ply(points_np, output_file)
-        save_pointcloud_npy(points_np, output_file.replace('.ply', '.npy'))
         processed.append({'sha256': sha256, 'pointcloud_processed': True, 'pointcloud_path': f'pointcloud/{sha256}.ply'})
 
     processed = pd.concat([pd.DataFrame(processed), pd.DataFrame.from_records(records)])
