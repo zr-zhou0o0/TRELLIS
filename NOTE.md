@@ -133,28 +133,44 @@ python dataset_toolkits/create_partial_pointcloud.py ObjaverseXL \
 
 - 移动zip到 datasets/3D-FUTURE/raw 下
 python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
-python dataset_toolkits/download.py 3D-FUTURE --output_dir datasets/3D-FUTURE --world_size 200
+<!-- 200~47 -->
+<!-- 20~473 -->
+python dataset_toolkits/download.py 3D-FUTURE --output_dir datasets/3D-FUTURE --world_size 20
 python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 <!-- 记得改gpu序号！ -->
-pip install openexr
+<!-- pip install openexr -->
 <!-- python dataset_toolkits/render.py 3D-FUTURE --output_dir datasets/3D-FUTURE --save_depth --save_normal --save_mask --num_views 60  -->
 
 <!-- 先加primitive 每个保存到两个glb里面 分别再渲染-找pc 或者在渲染完整pc的时候先删geo -->
 python dataset_toolkits/add_geometry.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_primitives 4,7 --primitive_types cube,cylinder,sphere,cone --use_time_seed
 
 <!-- 生成无遮挡的pc -->
-python dataset_toolkits/render_no-geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_normal --save_mask --scale 1.0
+<!-- python dataset_toolkits/render_no-geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_mask --scale 1.0 --gpu_num 4 -->
+python dataset_toolkits/render_no-geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_mask --scale 1.0 --gpu_num 1
 python dataset_toolkits/create_obj_pointcloud.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
+单个gpu: 2:45 / 8 = 0:20 / 1
+四个gpu: 10h / 441 = 1:21 / 1
+
 <!-- 生成有遮挡的pc -->
-python dataset_toolkits/render_geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_normal --save_mask --scale 1.0
+python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE
+python dataset_toolkits/render_geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_normal --save_mask --scale 1.0 --gpu_num 4
 python dataset_toolkits/exr_to_png.py 3D-FUTURE
 python dataset_toolkits/create_partial_pointcloud.py 3D-FUTURE --output_dir datasets/3D-FUTURE
 
 <!-- python dataset_toolkits/build_metadata.py 3D-FUTURE --output_dir datasets/3D-FUTURE -->
+<!-- 主要花费时间的是render步骤 -->
 
+<!-- nohup命令 -->
+nohup  >  2>&1 &
+nohup python dataset_toolkits/render_no-geo.py 3D-FUTURE --output_dir datasets/3D-FUTURE --num_views 60 --save_depth --save_mask --scale 1.0 --gpu_num 4 > datasets/3D-FUTURE/log.out 2>&1 &
 
+<!-- 数据到400个竟然卡住了 -->
+
+# TODO
+gpu利用率不高
+因为渲染进程池gpu分配和gpu个数不匹配，导致gpu资源争抢&上下文切换开销
 
 
 # **git**
@@ -170,6 +186,7 @@ git remote set-url origin https://github.com/zr-zhou0o0/TRELLIS.git
 git config http.version HTTP/1.1
 git config http.version HTTP/2.0
 
+用ssh clone，用http push
 
 
 TODO

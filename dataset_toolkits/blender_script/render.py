@@ -49,9 +49,12 @@ EXT = {
 }
 
 
-def setup_gpu(gpu_id):
+def setup_gpu(gpu_ids_str):
     """Configures Blender to use a specific GPU for Cycles rendering."""
     try:
+        # gpu_ids = [int(id.strip()) for id in gpu_ids_str.split(',')]
+        gpu_ids = [int(x) for x in gpu_ids_str.split(',') if x]
+         
         bpy.context.preferences.addons['cycles'].preferences.get_devices()
         bpy.context.scene.cycles.device = 'GPU'
         prefs = bpy.context.preferences.addons['cycles'].preferences
@@ -61,16 +64,19 @@ def setup_gpu(gpu_id):
         for device in prefs.devices:
             device.use = False
             
-        # Select the specified GPU
-        if gpu_id < len(prefs.devices):
-            prefs.devices[gpu_id].use = True
-            print(f"Successfully configured to use GPU {gpu_id}: {prefs.devices[gpu_id].name}")
+        enabled_gpus = []
+        # Select the specified GPUs
+        for gpu_id in gpu_ids:
+            if gpu_id < len(prefs.devices):
+                prefs.devices[gpu_id].use = True
+                enabled_gpus.append(prefs.devices[gpu_id].name)
+            else:
+                print(f"Warning: GPU ID {gpu_id} is out of range. Found {len(prefs.devices)} devices.")
+        
+        if enabled_gpus:
+            print(f"Successfully configured to use {len(enabled_gpus)} GPUs: {', '.join(enabled_gpus)}")
         else:
-            print(f"Warning: GPU ID {gpu_id} is out of range. Found {len(prefs.devices)} devices. Falling back to default.")
-            # Fallback: use the first available GPU if the ID is invalid
-            if prefs.devices:
-                prefs.devices[0].use = True
-                print(f"Fell back to using GPU 0: {prefs.devices[0].name}")
+            print("Warning: No valid GPUs were enabled. Falling back to default.")
 
     except Exception as e:
         print(f"Error setting up GPU: {e}. Rendering will proceed with default settings.")
@@ -746,13 +752,14 @@ if __name__ == '__main__':
     parser.add_argument('--save_mesh', action='store_true', help='Save the mesh as a .ply file.')
     parser.add_argument('--save_mask', action='store_true', help='Save the segmentation mask of target object. For partial point cloud generation.')
     parser.add_argument('--scale', type=float, default=1.0, help='Scale the object during normalization.')
-    parser.add_argument('--gpu_id', type=int, default=None, help='ID of the GPU to use for rendering')
+    parser.add_argument('--gpu_ids', type=str, default=None,
+                    help='Comma-separated GPU indices to use.')
 
     argv = sys.argv[sys.argv.index("--") + 1:]
     args = parser.parse_args(argv)
     
-    if args.gpu_id is not None:
-        setup_gpu(args.gpu_id)
+    if args.gpu_ids is not None:
+        setup_gpu(args.gpu_ids)
 
     main(args)
     

@@ -11,40 +11,48 @@ from subprocess import DEVNULL, call
 import numpy as np
 from utils import sphere_hammersley_sequence
 import subprocess
+import time
 
 
 BLENDER_LINK = 'https://download.blender.org/release/Blender3.0/blender-3.0.1-linux-x64.tar.xz'
-BLENDER_INSTALLATION_PATH = '/tmp'
+# BLENDER_INSTALLATION_PATH = '/tmp'
+BLENDER_INSTALLATION_PATH = '/home/junfeng/project-zirui'
 BLENDER_PATH = f'{BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64/blender'
 
-def _get_best_gpu():
+def _get_best_gpu(num_gpus=2):
     """Select the GPU with the lowest process percentage usage."""
-    try:
-        # Query GPU index and utilization, format as CSV
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=index,utilization.gpu', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, check=True
-        )
-        
-        gpus = []
-        for line in result.stdout.strip().split('\n'):
-            if not line:
-                continue
-            index, usage = line.split(',')
-            gpus.append({'id': int(index.strip()), 'usage': int(usage.strip())})
-        
-        if not gpus:
-            print("No GPUs found by nvidia-smi.")
-            return None
-            
-        # Find the GPU with the minimum usage
-        best_gpu = min(gpus, key=lambda x: (x['usage'], -x['id']))
-        print(f"Found {len(gpus)} GPUs. Selected GPU {best_gpu['id']} with {best_gpu['usage']}% usage.")
-        return best_gpu['id']
-        
-    except (FileNotFoundError, subprocess.CalledProcessError, Exception) as e:
-        print(f"Could not select best GPU: {e}. Falling back to default behavior.")
+
+    # Query GPU index and utilization, format as CSV
+    result = subprocess.run(
+        ['nvidia-smi', '--query-gpu=index,utilization.gpu', '--format=csv,noheader,nounits'],
+        capture_output=True, text=True, check=True
+    )
+    
+    gpus = []
+    for line in result.stdout.strip().split('\n'):
+        if not line:
+            continue
+        index, usage = line.split(',')
+        gpus.append({'id': int(index.strip()), 'usage': int(usage.strip())})
+    
+    if not gpus:
+        print("No GPUs found by nvidia-smi.")
         return None
+        
+    # Sort by usage (ascending) and then by ID (descending, for tie-breaking)
+    gpus.sort(key=lambda x: (x['usage'], -x['id']))
+    
+    # Select the top N GPUs
+    selected_gpus = gpus[:num_gpus]
+    selected_ids = [gpu['id'] for gpu in selected_gpus]
+    
+    if not selected_ids:
+        print("No GPUs were selected.")
+        return []
+
+    print(f"Found {len(gpus)} GPUs. Selected {len(selected_ids)} GPUs: {selected_ids}")
+    return selected_ids
+    
 
 
 def _install_blender():
@@ -67,7 +75,7 @@ def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save
         y, p = sphere_hammersley_sequence(i, num_views, offset)
         yaws.append(y)
         pitchs.append(p)
-    radius = [2] * num_views
+    radius = [2] * num_views # sqr 3 ~ 2*sqr3
     fov = [40 / 180 * np.pi] * num_views
     views = [{'yaw': y, 'pitch': p, 'radius': r, 'fov': f} for y, p, r, f in zip(yaws, pitchs, radius, fov)]
     
@@ -84,7 +92,7 @@ def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save
     ]
     
     if gpu_id is not None:
-        args.extend(['--gpu_id', str(gpu_id)])
+        args.extend(['--gpu_ids', ','.join(map(str, gpu_id))])
 
     if save_depth:
         args.append('--save_depth')
@@ -110,6 +118,7 @@ def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save
 
 
 if __name__ == '__main__':
+    start_time = time.time()
     dataset_utils = importlib.import_module(f'datasets.{sys.argv[1]}') # 动态导入不同模块，例如 datasets.ABO
 
     parser = argparse.ArgumentParser()
@@ -133,6 +142,8 @@ if __name__ == '__main__':
                         help='Save object masks during rendering (excluding random_geometry objects)')
     parser.add_argument('--scale', type=float, default=1.0,
                         help='Scale factor for the object during rendering')
+    parser.add_argument('--gpu_num', type=int, default=None,
+                        help='Number of GPUs to use for rendering')
     
     opt = parser.parse_args(sys.argv[2:])
     opt = edict(vars(opt)) # 将命令行参数转换为易于访问的属性字典
@@ -142,7 +153,7 @@ if __name__ == '__main__':
     # install blender
     print('Checking blender...', flush=True)
     _install_blender()
-    best_gpu_id = _get_best_gpu()
+    best_gpu_id = _get_best_gpu(opt.gpu_num)
     
 
     # get file list
@@ -167,9 +178,10 @@ if __name__ == '__main__':
         if opt.filter_low_aesthetic_score is not None:
             metadata = metadata[metadata['aesthetic_score'] >= opt.filter_low_aesthetic_score]
         
+        # TODO 在no-geo那里需要更改
         # Filter out objects that are already rendered
-        if 'rendered_geo' in metadata.columns:
-            metadata = metadata[metadata['rendered_geo'] == False] # 筛选出'rendered_geo'列值为False的所有行
+        # if 'rendered_geo' in metadata.columns:
+            # metadata = metadata[metadata['rendered_geo'] == False] # 筛选出'rendered_geo'列值为False的所有行
     else:
         if os.path.exists(opt.instances):
             with open(opt.instances, 'r') as f:
@@ -212,3 +224,13 @@ if __name__ == '__main__':
     rendered = dataset_utils.foreach_instance(metadata_geo, opt.output_dir, func, max_workers=opt.max_workers, desc='Rendering geo objects')
     rendered = pd.concat([rendered, pd.DataFrame.from_records(records)])
     rendered.to_csv(os.path.join(opt.output_dir, f'rendered_geo_{opt.rank}.csv'), index=False)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Total elapsed time: {elapsed_time:.2f} seconds")
+    
+    # log the total time 
+    save_path = os.path.join(opt.output_dir, 'renders_geo', 'time_log.txt')
+    with open(save_path, 'a') as f:
+        f.write(f"Elapsed time: {elapsed_time:.2f} seconds\n")
+    

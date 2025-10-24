@@ -17,34 +17,39 @@ BLENDER_LINK = 'https://download.blender.org/release/Blender3.0/blender-3.0.1-li
 BLENDER_INSTALLATION_PATH = '/tmp'
 BLENDER_PATH = f'{BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64/blender'
 
-def _get_best_gpu():
+def _get_best_gpu(num_gpus=2):
     """Select the GPU with the lowest process percentage usage."""
-    try:
-        # Query GPU index and utilization, format as CSV
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=index,utilization.gpu', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, check=True
-        )
-        
-        gpus = []
-        for line in result.stdout.strip().split('\n'):
-            if not line:
-                continue
-            index, usage = line.split(',')
-            gpus.append({'id': int(index.strip()), 'usage': int(usage.strip())})
-        
-        if not gpus:
-            print("No GPUs found by nvidia-smi.")
-            return None
-            
-        # Find the GPU with the minimum usage, preferring higher index on ties
-        best_gpu = min(gpus, key=lambda x: (x['usage'], -x['id']))
-        print(f"Found {len(gpus)} GPUs. Selected GPU {best_gpu['id']} with {best_gpu['usage']}% usage.")
-        return best_gpu['id']
-        
-    except (FileNotFoundError, subprocess.CalledProcessError, Exception) as e:
-        print(f"Could not select best GPU: {e}. Falling back to default behavior.")
+
+    # Query GPU index and utilization, format as CSV
+    result = subprocess.run(
+        ['nvidia-smi', '--query-gpu=index,utilization.gpu', '--format=csv,noheader,nounits'],
+        capture_output=True, text=True, check=True
+    )
+    
+    gpus = []
+    for line in result.stdout.strip().split('\n'):
+        if not line:
+            continue
+        index, usage = line.split(',')
+        gpus.append({'id': int(index.strip()), 'usage': int(usage.strip())})
+    
+    if not gpus:
+        print("No GPUs found by nvidia-smi.")
         return None
+        
+    # Sort by usage (ascending) and then by ID (descending, for tie-breaking)
+    gpus.sort(key=lambda x: (x['usage'], -x['id']))
+    
+    # Select the top N GPUs
+    selected_gpus = gpus[:num_gpus]
+    selected_ids = [gpu['id'] for gpu in selected_gpus]
+    
+    if not selected_ids:
+        print("No GPUs were selected.")
+        return []
+
+    print(f"Found {len(gpus)} GPUs. Selected {len(selected_ids)} GPUs: {selected_ids}")
+    return selected_ids
 
 
 def _install_blender():
@@ -83,7 +88,8 @@ def _render(file_path, sha256, output_dir, num_views, save_depth=False, save_nor
     ]
     
     if gpu_id is not None:
-        args.extend(['--gpu_id', str(gpu_id)])
+        # args.extend(['--gpu_id', str(gpu_id)])
+        args.extend(['--gpu_ids', ','.join(map(str, gpu_id))])
 
     if save_depth:
         args.append('--save_depth')

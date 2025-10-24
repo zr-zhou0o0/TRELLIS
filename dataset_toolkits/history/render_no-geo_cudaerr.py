@@ -15,8 +15,7 @@ import time
 
 
 BLENDER_LINK = 'https://download.blender.org/release/Blender3.0/blender-3.0.1-linux-x64.tar.xz'
-# BLENDER_INSTALLATION_PATH = '/tmp'
-BLENDER_INSTALLATION_PATH = '/home/junfeng/project-zirui'
+BLENDER_INSTALLATION_PATH = '/tmp'
 BLENDER_PATH = f'{BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64/blender'
 
 def _get_best_gpu(num_gpus=2):

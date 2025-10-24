@@ -82,8 +82,8 @@ def _add_geo_primitives(file_path, sha256, **kwargs):
     # print("Running command: " + ' '.join(args), flush=True)
     
     # Run blender script
-    # result = call(args, stdout=DEVNULL, stderr=DEVNULL)
-    result = call(args)
+    result = call(args, stdout=DEVNULL, stderr=DEVNULL)
+    # result = call(args)
     
     if result == 0 and os.path.exists(output_file):
         return {'sha256': sha256, 'processed': True, 'output_path': os.path.relpath(output_file, output_dir)}

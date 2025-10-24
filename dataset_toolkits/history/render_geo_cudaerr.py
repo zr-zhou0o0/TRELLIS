@@ -15,47 +15,43 @@ import time
 
 
 BLENDER_LINK = 'https://download.blender.org/release/Blender3.0/blender-3.0.1-linux-x64.tar.xz'
-# BLENDER_INSTALLATION_PATH = '/tmp'
-BLENDER_INSTALLATION_PATH = '/home/junfeng/project-zirui'
+BLENDER_INSTALLATION_PATH = '/tmp'
 BLENDER_PATH = f'{BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64/blender'
 
 def _get_best_gpu(num_gpus=2):
     """Select the GPU with the lowest process percentage usage."""
-    try:
-        # Query GPU index and utilization, format as CSV
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=index,utilization.gpu', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, check=True
-        )
-        
-        gpus = []
-        for line in result.stdout.strip().split('\n'):
-            if not line:
-                continue
-            index, usage = line.split(',')
-            gpus.append({'id': int(index.strip()), 'usage': int(usage.strip())})
-        
-        if not gpus:
-            print("No GPUs found by nvidia-smi.")
-            return None
-            
-        # Sort by usage (ascending) and then by ID (descending, for tie-breaking)
-        gpus.sort(key=lambda x: (x['usage'], -x['id']))
-        
-        # Select the top N GPUs
-        selected_gpus = gpus[:num_gpus]
-        selected_ids = [gpu['id'] for gpu in selected_gpus]
-        
-        if not selected_ids:
-            print("No GPUs were selected.")
-            return []
 
-        print(f"Found {len(gpus)} GPUs. Selected {len(selected_ids)} GPUs: {selected_ids}")
-        return selected_ids
-        
-    except (FileNotFoundError, subprocess.CalledProcessError, Exception) as e:
-        print(f"Could not select best GPU: {e}. Falling back to default behavior.")
+    # Query GPU index and utilization, format as CSV
+    result = subprocess.run(
+        ['nvidia-smi', '--query-gpu=index,utilization.gpu', '--format=csv,noheader,nounits'],
+        capture_output=True, text=True, check=True
+    )
+    
+    gpus = []
+    for line in result.stdout.strip().split('\n'):
+        if not line:
+            continue
+        index, usage = line.split(',')
+        gpus.append({'id': int(index.strip()), 'usage': int(usage.strip())})
+    
+    if not gpus:
+        print("No GPUs found by nvidia-smi.")
         return None
+        
+    # Sort by usage (ascending) and then by ID (descending, for tie-breaking)
+    gpus.sort(key=lambda x: (x['usage'], -x['id']))
+    
+    # Select the top N GPUs
+    selected_gpus = gpus[:num_gpus]
+    selected_ids = [gpu['id'] for gpu in selected_gpus]
+    
+    if not selected_ids:
+        print("No GPUs were selected.")
+        return []
+
+    print(f"Found {len(gpus)} GPUs. Selected {len(selected_ids)} GPUs: {selected_ids}")
+    return selected_ids
+    
 
 
 def _install_blender():
@@ -68,7 +64,7 @@ def _install_blender():
 
 def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save_normal=False, save_mask=False , scale=1.0, gpu_id=None):
     # Output to renders_geo directory instead of renders
-    output_folder = os.path.join(output_dir, 'renders_no-geo', sha256)
+    output_folder = os.path.join(output_dir, 'renders_geo', sha256)
     
     # Build camera {yaw, pitch, radius, fov}
     yaws = []
@@ -91,7 +87,6 @@ def _render_geo(file_path, sha256, output_dir, num_views, save_depth=False, save
         '--output_folder', output_folder,
         '--engine', 'CYCLES',
         '--save_mesh',
-        '--no_geo',
         '--scale', str(scale)
     ]
     
@@ -152,14 +147,14 @@ if __name__ == '__main__':
     opt = parser.parse_args(sys.argv[2:])
     opt = edict(vars(opt)) # 将命令行参数转换为易于访问的属性字典
 
-    os.makedirs(os.path.join(opt.output_dir, 'renders_no-geo'), exist_ok=True)
+    os.makedirs(os.path.join(opt.output_dir, 'renders_geo'), exist_ok=True)
     
     # install blender
     print('Checking blender...', flush=True)
     _install_blender()
     best_gpu_id = _get_best_gpu(opt.gpu_num)
     
-    # TODO 这里不能和geo共用
+
     # get file list
     if not os.path.exists(os.path.join(opt.output_dir, 'metadata.csv')):
         raise ValueError('metadata.csv not found')
@@ -182,9 +177,10 @@ if __name__ == '__main__':
         if opt.filter_low_aesthetic_score is not None:
             metadata = metadata[metadata['aesthetic_score'] >= opt.filter_low_aesthetic_score]
         
+        # TODO 在no-geo那里需要更改
         # Filter out objects that are already rendered
-        if 'rendered_geo' in metadata.columns:
-            metadata = metadata[metadata['rendered_geo'] == False] # 筛选出'rendered_geo'列值为False的所有行
+        # if 'rendered_geo' in metadata.columns:
+            # metadata = metadata[metadata['rendered_geo'] == False] # 筛选出'rendered_geo'列值为False的所有行
     else:
         if os.path.exists(opt.instances):
             with open(opt.instances, 'r') as f:
@@ -228,11 +224,12 @@ if __name__ == '__main__':
     rendered = pd.concat([rendered, pd.DataFrame.from_records(records)])
     rendered.to_csv(os.path.join(opt.output_dir, f'rendered_geo_{opt.rank}.csv'), index=False)
 
-    # end_time = time.time()
-    # elapsed_time = end_time - start_time
-    # print(f"Total elapsed time: {elapsed_time:.2f} seconds")
-
-    # # log the total time
-    # save_path = os.path.join(opt.output_dir, 'renders_no-geo', 'time_log.txt')
-    # with open(save_path, 'a') as f:
-    #     f.write(f"Elapsed time: {elapsed_time:.2f} seconds\n")
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Total elapsed time: {elapsed_time:.2f} seconds")
+    
+    # log the total time 
+    save_path = os.path.join(opt.output_dir, 'renders_geo', 'time_log.txt')
+    with open(save_path, 'a') as f:
+        f.write(f"Elapsed time: {elapsed_time:.2f} seconds\n")
+    
