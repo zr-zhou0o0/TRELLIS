@@ -170,7 +170,7 @@ fi
 
 if [ "$FLASHATTN" = true ] ; then
     if [ "$PLATFORM" = "cuda" ] ; then
-        pip install flash-attn
+        pip install flash-attn --no-build-isolation
     elif [ "$PLATFORM" = "hip" ] ; then
         echo "[FLASHATTN] Prebuilt binaries not found. Building from source..."
         mkdir -p /tmp/extensions
@@ -206,7 +206,7 @@ if [ "$NVDIFFRAST" = true ] ; then
     if [ "$PLATFORM" = "cuda" ] ; then
         mkdir -p /tmp/extensions
         git clone https://github.com/NVlabs/nvdiffrast.git /tmp/extensions/nvdiffrast
-        pip install /tmp/extensions/nvdiffrast
+        pip install /tmp/extensions/nvdiffrast --no-build-isolation
     else
         echo "[NVDIFFRAST] Unsupported platform: $PLATFORM"
     fi
@@ -216,7 +216,7 @@ if [ "$DIFFOCTREERAST" = true ] ; then
     if [ "$PLATFORM" = "cuda" ] ; then
         mkdir -p /tmp/extensions
         git clone --recurse-submodules https://github.com/JeffreyXiang/diffoctreerast.git /tmp/extensions/diffoctreerast
-        pip install /tmp/extensions/diffoctreerast
+        pip install /tmp/extensions/diffoctreerast --no-build-isolation
     else
         echo "[DIFFOCTREERAST] Unsupported platform: $PLATFORM"
     fi
@@ -226,7 +226,7 @@ if [ "$MIPGAUSSIAN" = true ] ; then
     if [ "$PLATFORM" = "cuda" ] ; then
         mkdir -p /tmp/extensions
         git clone https://github.com/autonomousvision/mip-splatting.git /tmp/extensions/mip-splatting
-        pip install /tmp/extensions/mip-splatting/submodules/diff-gaussian-rasterization/
+        pip install /tmp/extensions/mip-splatting/submodules/diff-gaussian-rasterization/ --no-build-isolation
     else
         echo "[MIPGAUSSIAN] Unsupported platform: $PLATFORM"
     fi
@@ -236,7 +236,7 @@ if [ "$VOX2SEQ" = true ] ; then
     if [ "$PLATFORM" = "cuda" ] ; then
         mkdir -p /tmp/extensions
         cp -r extensions/vox2seq /tmp/extensions/vox2seq
-        pip install /tmp/extensions/vox2seq
+        pip install /tmp/extensions/vox2seq --no-build-isolation
     else
         echo "[VOX2SEQ] Unsupported platform: $PLATFORM"
     fi

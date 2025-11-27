@@ -1,9 +1,64 @@
+# **For Alpha Server**
+export PATH="/home/njunfeng/miniconda3/envs/trellis/bin:$PATH"
+echo $PATH
+
 # **网络连接**
 - http连不上github 用ssh下载
 - 可以ping通huggingface，但是代码里连接不上，暂时用镜像站
 - requests.exceptions.ConnectionError: (MaxRetryError("HTTPSConnectionPool(host='huggingface.co', port=443): Max retries exceeded with url: /api/datasets/JeffreyXiang/TRELLIS-500K (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7fd0457c6450>: Failed to establish a new connection: [Errno 101] Network is unreachable'))"), '(Request ID: e6165af7-c129-4866-9929-a2eead03d131)')
     - 找不到代理配置文件，找不到有代理的地址和端口
     - export HF_ENDPOINT=https://hf-mirror.com
+
+# **从头开始配trellis**
+## *一定要先把pip和python路径确认正确，最好local不要有任何包残留*
+- export PATH="/home/njunfeng/miniconda3/envs/trellis/bin:$PATH"
+- /path/to/conda/envs/demo/bin/python -m pip install <包名>
+- 永远不要在 base 环境或系统 Python 装包。
+- （没用）pip config set global.user false
+- pip install --force-reinstall --ignore-installed <包名>
+pip install --ignore-installed 
+
+## *如果要安装flash attn，torch版本不能用cu11打头的*
+. ./setup.sh --new-env
+pip install --ignore-installed torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu124
+<!-- conda install pytorch==2.4.0 torchvision==0.19.0 pytorch-cuda=11.8 -c pytorch -c nvidia -->
+
+
+# **torch conda环境和python使用的不同**
+python -c "import torch; print(torch.__file__)"
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.version.cuda}'); print(f'Path: {torch.__file__}')"
+/home/njunfeng/miniconda3/lib/python3.13/site-packages/torch/__init__.py
+
+which python && python --version
+/home/njunfeng/miniconda3/bin/python
+Python 3.13.5
+问题找到了！你在使用系统的Python 3.13（python），而不是conda环境trellis的Python 3.10。这就是为什么加载的是错误的torch版本。
+
+彻底删除用户级的torch（推荐，一劳永逸）
+pip uninstall torch torchvision torchaudio xformers functorch -y
+
+conda activate trellis
+
+# *--ignore-installed 和 --no-build-isolation*
+. ./setup.sh --basic 
+pip install --ignore-installed git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8
+
+. ./setup.sh --xformers 
+pip install --ignore-installed xformers==0.0.28.post2 --index-url https://download.pytorch.org/whl/cu124
+
+
+pip install --ignore-installed torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+
+pip install --ignore-installed flash-attn --no-build-isolation
+
+pip install kaolin -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu121.html
+
+# 也需要添加 --no-build-isolation 
+. ./setup.sh --diffoctreerast
+
+. ./setup.sh --spconv
+
+. ./setup.sh --mipgaussian --nvdiffrast
 
 
 # **Dataset Preprocess**
